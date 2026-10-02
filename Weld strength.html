@@ -3,228 +3,1147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AWS / Shigley 3D Weld Strength Calculator</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Weld Group Analysis & Stress Calculator</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+                50: '#f0f7ff',
+                100: '#e0effe',
+                500: '#0284c7',
+                600: '#0369a1',
+                700: '#075985',
+                800: '#0c4a6e',
+                900: '#0f172a'
+            }
+          }
+        }
+      }
+    }</script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- KaTeX CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Inter & Fira Code Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        .katex-display {
+            margin: 0.5em 0;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+    </style>
+
 </head>
-<body>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
-<div class="container">
-    <div style="margin-bottom: 15px;">
-        <a href="index.html" class="home-link">← Back to Home</a>
-    </div>
+    <!-- Navigation / Header -->
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3">
+            <div class="flex items-center justify-between h-16">
 
-    <h1>AWS / Shigley Weld Group Analysis Tool</h1>
-
-    <!-- Tab Bar -->
-    <div class="tab-nav">
-        <button class="tab-btn active" onclick="openTab('calculatorTab', this)">Interactive Calculator</button>
-        <button class="tab-btn" onclick="openTab('referenceTab', this)">References & Governing Equations</button>
-    </div>
-
-    <!-- TAB 1: CALCULATOR -->
-    <div id="calculatorTab" class="tab-content active">
-        <div class="grid">
-            <!-- Inputs Column -->
-            <div>
-                <div class="card">
-                    <h2>1. Weld Pattern & Dimensions</h2>
-                    <div class="form-group" style="grid-template-columns: 1fr 2fr;">
-                        <label for="patternSelect">Pattern Type:</label>
-                        <select id="patternSelect" onchange="toggleDimensionInputs(); calculateWeld();">
-                            <option value="single">Single Vertical Line (d)</option>
-                            <option value="two_vert">Two Parallel Vertical Lines (b, d)</option>
-                            <option value="two_horiz">Two Parallel Horizontal Lines (b, d)</option>
-                            <option value="l_shape">L-Shape (b, d)</option>
-                            <option value="u_shape">U-Shape / Channel (b, d)</option>
-                            <option value="rect">Rectangular / Closed Loop (b, d)</option>
-                            <option value="circle">Circular Ring (Diameter D)</option>
-                            <option value="t_shape">T-Shape (b, d)</option>
-                        </select>
+                <!-- Branding -->
+                <div class="flex items-center space-x-3">
+                    <div class="bg-sky-500 p-2 rounded-lg text-white">
+                        <i class="fa-solid fa-layer-group text-xl"></i>
                     </div>
-                    <div class="form-group">
-                        <label>Weld Leg Size (h):</label>
-                        <input type="number" id="weld_h" value="0.25" step="0.01" oninput="calculateWeld()">
-                        <span>in / mm</span>
-                    </div>
-                    <div class="form-group" id="group_b">
-                        <label>Width (b):</label>
-                        <input type="number" id="dim_b" value="4.0" step="0.1" oninput="calculateWeld()">
-                        <span>in / mm</span>
-                    </div>
-                    <div class="form-group" id="group_d">
-                        <label>Height (d):</label>
-                        <input type="number" id="dim_d" value="6.0" step="0.1" oninput="calculateWeld()">
-                        <span>in / mm</span>
-                    </div>
-                    <div class="form-group" id="group_D" style="display:none;">
-                        <label>Diameter (D):</label>
-                        <input type="number" id="dim_D" value="4.0" step="0.1" oninput="calculateWeld()">
-                        <span>in / mm</span>
+                    <div>
+                        <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                            Weld Group Statics & Stress
+                            <span class="text-xs font-normal px-2 py-0.5 rounded bg-sky-900/80 text-sky-200 border border-sky-700/50">Engineering Tool</span>
+                        </h1>
+                        <p class="text-xs text-slate-400">Analysis & Hotspot Efficiency Calculator</p>
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>2. Applied 3D Forces & Location</h2>
-                    <div class="form-group"><label>Force Fx:</label><input type="number" id="Fx" value="0" oninput="calculateWeld()"><span>lbf / N</span></div>
-                    <div class="form-group"><label>Force Fy:</label><input type="number" id="Fy" value="-1000" oninput="calculateWeld()"><span>lbf / N</span></div>
-                    <div class="form-group"><label>Force Fz:</label><input type="number" id="Fz" value="500" oninput="calculateWeld()"><span>lbf / N</span></div>
-                    <div class="form-group"><label>Load Pos X (xp):</label><input type="number" id="xp" value="8" oninput="calculateWeld()"><span>in / mm</span></div>
-                    <div class="form-group"><label>Load Pos Y (yp):</label><input type="number" id="yp" value="3" oninput="calculateWeld()"><span>in / mm</span></div>
-                    <div class="form-group"><label>Load Pos Z (zp):</label><input type="number" id="zp" value="2" oninput="calculateWeld()"><span>in / mm</span></div>
+                <!-- Unit Toggle Switch (Top Right) -->
+                <div class="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs">
+                    <span id="unit-label-us" class="px-3 py-1 rounded-md font-medium text-white bg-sky-600 transition-all cursor-pointer" onclick="setUnits('imperial')">US Customary</span>
+                    <span id="unit-label-si" class="px-3 py-1 rounded-md font-medium text-slate-400 hover:text-white transition-all cursor-pointer" onclick="setUnits('si')">SI Metric</span>
                 </div>
 
-                <div class="card">
-                    <h2>3. External Moments & Strength</h2>
-                    <div class="form-group"><label>Direct Moment Mx:</label><input type="number" id="Mx_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
-                    <div class="form-group"><label>Direct Moment My:</label><input type="number" id="My_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
-                    <div class="form-group"><label>Direct Torque Mz (T):</label><input type="number" id="Mz_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
-                    <div class="form-group"><label>Electrode Sut (e.g. E70xx):</label><input type="number" id="Sut" value="70000" oninput="calculateWeld()"><span>psi / MPa</span></div>
-                    <div class="form-group"><label>Custom Check Pt (x, y):</label>
-                        <input type="number" id="custom_x" value="0" placeholder="x" oninput="calculateWeld()">
-                        <input type="number" id="custom_y" value="0" placeholder="y" oninput="calculateWeld()">
-                    </div>
-                </div>
             </div>
 
-            <!-- Results & Diagram Column -->
-            <div>
-                <div class="card">
-                    <h2>2D Pattern & Applied Load Diagram</h2>
-                    <canvas id="weldCanvas" width="500" height="380"></canvas>
+            <!-- Navigation Tabs (Located under Title) -->
+            <div class="flex space-x-1 border-t border-slate-800 pt-2 pb-0">
+                <button id="tab-btn-calc" onclick="switchTab('calc')" class="px-4 py-2 text-sm font-semibold border-b-2 border-sky-400 text-sky-400 flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-calculator mr-1.5"></i>Interactive Calculator
+                </button>
+                <button id="tab-btn-theory" onclick="switchTab('theory')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-book-open mr-1.5"></i>Theory & References
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- TAB 1: INTERACTIVE CALCULATOR -->
+        <div id="tab-calc" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Column 1: Controls & Inputs (5 cols) -->
+                <div class="lg:col-span-5 space-y-6">
+
+                    <!-- Geometry Settings Card -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center">
+                            <i class="fa-solid fa-shapes mr-2 text-sky-600"></i> Weld Pattern Geometry
+                        </h2>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Pattern Configuration</label>
+                                <select id="input-pattern" onchange="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-sans">
+                                    <option value="single">Single Vertical Line (d)</option>
+                                    <option value="two_vert">Two Parallel Vertical Lines (b, d)</option>
+                                    <option value="two_horiz">Two Parallel Horizontal Lines (b, d)</option>
+                                    <option value="l_shape">L-Shape (b, d)</option>
+                                    <option value="u_shape">U-Shape / Channel (b, d)</option>
+                                    <option value="rect">Rectangular / Closed Loop (b, d)</option>
+                                    <option value="circle">Circular Ring (Diameter D)</option>
+                                    <option value="t_shape">T-Shape (b, d)</option>
+                                </select>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Weld Leg Size ($h$)</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-h" value="0.25" step="0.01" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Width ($b$ / $D$)</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-b" value="6.0" step="0.1" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="wrapper-d" class="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Height ($d$)</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-d" value="8.0" step="0.1" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Applied Forces & Load Locations Card (2-Column Table) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                            <i class="fa-solid fa-arrows-down-to-line mr-2 text-sky-600"></i> Applied Forces & Load Application Points
+                        </h2>
+
+                        <!-- 2-Column Forces Table -->
+                        <div class="overflow-x-auto mb-4">
+                            <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-lg overflow-hidden">
+                                <thead class="bg-slate-100 text-slate-600 uppercase text-[10px] tracking-wider border-b border-slate-200">
+                                    <tr>
+                                        <th class="p-2">Force Magnitude</th>
+                                        <th class="p-2">Application Coord</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-200 bg-slate-50/50">
+                                    <!-- Fx Row -->
+                                    <tr>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_x$ Shear</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-fx" value="1200" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
+                                            </div>
+                                        </td>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$X_L$ Location</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-xl" value="3.0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <!-- Fy Row -->
+                                    <tr>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_y$ Direct</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-fy" value="-4500" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
+                                            </div>
+                                        </td>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$Y_L$ Location</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-yl" value="4.0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <!-- Fz Row -->
+                                    <tr>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_z$ Out-of-Plane</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-fz" value="0" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
+                                            </div>
+                                        </td>
+                                        <td class="p-2">
+                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$Z_L$ Offset</label>
+                                            <div class="relative">
+                                                <input type="number" id="input-zl" value="0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Applied Moments Column -->
+                        <div class="space-y-3 pt-2 border-t border-slate-100">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Applied Direct Moments</label>
+
+                            <div class="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_x$ Bending</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-mx" value="0" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_y$ Bending</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-my" value="0" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_z$ Torsion</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-mz" value="18000" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Material Properties Card -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                            <i class="fa-solid fa-shield-halved mr-2 text-sky-600"></i> Weld Strength Criteria
+                        </h2>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Allowable Shear Stress ($\tau_{allow}$)</label>
+                            <div class="relative">
+                                <input type="number" id="input-tau-allow" value="21000" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-12 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                <span class="unit-stress absolute right-3 top-2 text-xs text-slate-400">psi</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-1">Standard E70XX electrodes: $0.30 \times 70\text{ ksi} = 21.0\text{ ksi}$ allowable shear.</p>
+                        </div>
+                    </div>
+
+                    <!-- Custom Point Stress Evaluation Card -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                            <i class="fa-solid fa-crosshairs mr-2 text-sky-600"></i> Custom Point Stress Check
+                        </h2>
+
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Point $X_{custom}$</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-custom-x" value="3.0" step="0.5" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Point $Y_{custom}$</label>
+                                    <div class="relative">
+                                        <input type="number" id="input-custom-y" value="4.0" step="0.5" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
-                <div class="card">
-                    <h2>Geometric & Throat Properties</h2>
-                    <table>
-                        <tr><th>Property</th><th>Unit Value (Au, Iu, Ju)</th><th>Throat Value (A, I, J)</th></tr>
-                        <tr><td>Effective Area</td><td id="res_Au">-</td><td id="res_A">-</td></tr>
-                        <tr><td>Centroid (x̄, ȳ)</td><td colspan="2" id="res_centroid" style="text-align:center;">-</td></tr>
-                        <tr><td>I_x (Bending)</td><td id="res_Iux">-</td><td id="res_Ix">-</td></tr>
-                        <tr><td>I_y (Bending)</td><td id="res_Iuy">-</td><td id="res_Iy">-</td></tr>
-                        <tr><td>J (Torsion)</td><td id="res_Ju">-</td><td id="res_J">-</td></tr>
-                    </table>
-                </div>
+                <!-- Column 2: Visualizer Canvas & Output Reports (7 cols) -->
+                <div class="lg:col-span-7 space-y-6">
 
-                <div class="card">
-                    <h2>Resolved Net Moments @ Centroid</h2>
-                    <div class="summary-box" id="moment_breakdown">
-                        Click calculate to resolve moments...
+                    <!-- Canvas Visualizer Card -->
+                    <div class="bg-slate-900 rounded-xl shadow-xl border border-slate-800 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-800 flex justify-between items-center">
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                                <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                                <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 ml-2">2D Weld Vector & Node Visualizer</h3>
+                            </div>
+                            <div class="text-[11px] font-mono text-slate-400 flex items-center space-x-3">
+                                <span><span class="inline-block w-2.5 h-2.5 bg-sky-400 rounded-full mr-1"></span> Weld</span>
+                                <span><span class="inline-block w-2.5 h-2.5 bg-amber-400 rounded-full mr-1"></span> Nodes</span>
+                                <span><span class="inline-block w-2.5 h-2.5 bg-red-500 rounded-full mr-1"></span> CG</span>
+                            </div>
+                        </div>
+
+                        <div class="p-4 flex justify-center bg-slate-950">
+                            <canvas id="weldCanvas" width="600" height="380" class="w-full max-w-2xl rounded bg-slate-900 border border-slate-800/80 cursor-crosshair"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Factor of Safety / Status Header Banner -->
+                    <div id="status-card" class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div id="status-icon-bg" class="w-12 h-12 rounded-lg bg-emerald-500 text-white flex items-center justify-center text-2xl font-bold">
+                                <i id="status-icon" class="fa-solid fa-check"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span id="status-badge" class="px-2 py-0.5 rounded text-xs font-extrabold tracking-wider bg-emerald-500 text-white uppercase">SAFE DESIGN</span>
+                                    <span class="text-xs text-slate-500">AISC / AWS Code Compliance</span>
+                                </div>
+                                <h4 id="status-title" class="text-base font-bold text-slate-800 mt-0.5">Factor of Safety $n = 2.45$</h4>
+                            </div>
+                        </div>
+
+                        <div class="text-right font-mono">
+                            <div class="text-xs text-slate-500">Max Hotspot Stress ($\tau_{max}$)</div>
+                            <div id="val-tau-max-badge" class="text-xl font-bold text-slate-900">8,570 psi</div>
+                        </div>
+                    </div>
+
+                    <!-- Section Geometric Properties Card (Unit & Total Values) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                                <i class="fa-solid fa-calculator mr-1.5 text-sky-600"></i> Calculated Section Properties
+                            </h3>
+                            <span class="text-[11px] font-mono text-slate-400">Unit vs Total Section Values</span>
+                        </div>
+
+                        <div class="p-4 space-y-4">
+                            <!-- Centroid & Throats Header -->
+                            <div class="grid grid-cols-3 gap-3 text-center font-mono">
+                                <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                    <div class="text-[11px] text-slate-500 font-sans">Throat Thickness ($t$)</div>
+                                    <div id="val-t" class="text-sm font-bold text-slate-800 mt-0.5">0.1768 in</div>
+                                </div>
+                                <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                    <div class="text-[11px] text-slate-500 font-sans">Centroid ($\bar{x}, \bar{y}$)</div>
+                                    <div id="val-centroid" class="text-sm font-bold text-slate-800 mt-0.5">(3.00, 4.00) in</div>
+                                </div>
+                                <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                    <div class="text-[11px] text-slate-500 font-sans">Total Weld Area ($A_w$)</div>
+                                    <div id="val-aw" class="text-sm font-bold text-slate-800 mt-0.5">4.95 in²</div>
+                                </div>
+                            </div>
+
+                            <!-- Dual Unit vs Actual Table -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-center text-xs font-mono border border-slate-100 rounded-lg overflow-hidden">
+                                    <thead class="bg-slate-100 text-slate-600 uppercase text-[10px] tracking-wider">
+                                        <tr>
+                                            <th class="py-2 px-3 text-left">Property Type</th>
+                                            <th class="py-2 px-3">Unit Property (per unit throat)</th>
+                                            <th class="py-2 px-3">Total Actual Property</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Length / Area</td>
+                                            <td id="val-length-unit" class="py-2 px-3 text-slate-800">28.00 in</td>
+                                            <td id="val-area-total" class="py-2 px-3 font-bold text-slate-900">4.95 in²</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Inertia $I_x$</td>
+                                            <td id="val-ixw" class="py-2 px-3 text-slate-800">149.3 in³</td>
+                                            <td id="val-ix-total" class="py-2 px-3 font-bold text-slate-900">26.4 in⁴</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Inertia $I_y$</td>
+                                            <td id="val-iyw" class="py-2 px-3 text-slate-800">175.2 in³</td>
+                                            <td id="val-iy-total" class="py-2 px-3 font-bold text-slate-900">31.0 in⁴</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Polar Inertia $J$</td>
+                                            <td id="val-jw" class="py-2 px-3 text-slate-800">324.5 in³</td>
+                                            <td id="val-j-total" class="py-2 px-3 font-bold text-slate-900">57.4 in⁴</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section Total Loading -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                                <i class="fa-solid fa-calculator mr-1.5 text-sky-600"></i> Total Applied Loading
+                            </h3>
+                        </div>
+
+                        <div class="p-4 space-y-4">
+                            <!-- Dual Unit vs Actual Table -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-center text-xs font-mono border border-slate-100 rounded-lg overflow-hidden">
+                                    <thead class="bg-slate-100 text-slate-600 uppercase text-[10px] tracking-wider">
+                                        <tr>
+                                            <th class="py-2 px-3 text-left w-1/3">Direction</th>
+                                            <th class="py-2 px-3 w-1/3">Forces</th>
+                                            <th class="py-2 px-3 w-1/3">Moments</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">X</td>
+                                            <td id="val-fx" class="py-2 px-3 text-slate-800">0 lbf</td>
+                                            <td id="val-mx-total" class="py-2 px-3 font-bold text-slate-900">0 lbf*in</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Y</td>
+                                            <td id="val-fy" class="py-2 px-3 text-slate-800">0 lbf</td>
+                                            <td id="val-my-total" class="py-2 px-3 font-bold text-slate-900">0 lbf*in</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 px-3 text-left font-sans text-slate-600 font-semibold">Z</td>
+                                            <td id="val-fz" class="py-2 px-3 text-slate-800">0 lbf</td>
+                                            <td id="val-mz-total" class="py-2 px-3 font-bold text-slate-900">0 lbf*in</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>Hotspot Stress Analysis</h2>
-                    <table id="stressTable">
-                        <thead>
-                            <tr>
-                                <th rowspan="2">Point</th>
-                                <th rowspan="2">(x, y)</th>
-                                <th colspan="3">Primary Shear (τ')</th>
-                                <th colspan="3">Secondary Shear (τ'')</th>
-                                <th colspan="3">Total Shear (τ)</th>
-                                <th rowspan="2">τ_max</th>
-                            </tr>
-                            <tr>
-                                <th>τ'x</th>
-                                <th>τ'y</th>
-                                <th>τ'z</th>
-                                <th>τ''x</th>
-                                <th>τ''y</th>
-                                <th>τ''z</th>
-                                <th>τx</th>
-                                <th>τy</th>
-                                <th>τz</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr><td colspan="12" style="text-align:center;">Click calculate to see results</td></tr>
-                        </tbody>
-                    </table>
+            </div>
 
-                    <div class="summary-box" id="safety_summary">
-                        Factor of safety evaluation...
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-12 space-y-6">
+                    <!-- Hotspot Stress Analysis Table -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                                <i class="fa-solid fa-list-check mr-1.5 text-sky-600"></i> Hotspot Node Stress Breakdown
+                            </h3>
+                        </div>
+
+                        <div class="p-4">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-xs font-mono rounded-xl border border-slate-100 overflow-hidden">
+                                    <thead class="bg-slate-100 text-slate-600 normal-case text-[10px] tracking-wider border-b border-slate-200">
+                                        <!-- Top Row -->
+                                        <tr>
+                                            <th rowspan="2" class="px-3 py-2.5 text-left align-middle border-r border-slate-200">Point</th>
+                                            <th rowspan="2" class="px-3 py-2.5 text-center align-middle border-r border-slate-200">Coords (x, y)</th>
+                                            <th colspan="3" class="px-3 py-2 text-center border-b border-r border-slate-200">Primary Shear (&tau;')</th>
+                                            <th colspan="3" class="px-3 py-2 text-center border-b border-r border-slate-200">Secondary Shear (&tau;'')</th>
+                                            <th colspan="3" class="px-3 py-2 text-center border-b border-r border-slate-200">Total Shear (&tau;)</th>
+                                            <th rowspan="2" class="px-3 py-2.5 text-center border-b border-r border-slate-200">Max &tau;</th>
+                                            <th rowspan="2" class="px-3 py-2.5 text-center border-b border-r border-slate-200">Status</th>
+                                        </tr>
+                                        <!-- Sub-Row -->
+                                        <tr class="border-b border-slate-200">
+                                            <!-- Primary Shear Sub-columns -->
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;'x</th>
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;'y</th>
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;'z</th>
+
+                                            <!-- Secondary Shear Sub-columns -->
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;''x</th>
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;''y</th>
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;''z</th>
+
+                                            <!-- Total Shear Sub-columns -->
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;x</th>
+                                            <th class="px-2 py-2 text-center border-r border-slate-200">&tau;y</th>
+                                            <th class="px-2 py-2 text-center">&tau;z</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="hotspot-table-body" class="divide-y divide-slate-100">
+                                        <!-- JS populated rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- TAB 2: REFERENCES & THEORY -->
-    <div id="referenceTab" class="tab-content">
-        <div class="card">
-            <h2>Theory & Calculation Methodology (AWS / Shigley Method)</h2>
+        <!-- TAB 2: THEORY & GOVERNING EQUATIONS -->
+        <div id="tab-theory" class="hidden space-y-6 max-w-4xl mx-auto">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
 
-            <p>This application implements the <strong>Unit Line Weld Method</strong> established by Omer Blodgett and standardized in <em>Shigley’s Mechanical Engineering Design</em> and the AWS/AISC structural design codes. The method simplifies 3D weld group evaluation by treating welds as 1D lines and scaling properties by the minimum throat size.</p>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 mb-2">Weld Group Analysis Methodology</h2>
+                    <p class="text-sm text-slate-600 leading-relaxed">
+                        This calculator implements the standard Elastic Method (Unit Line Method) for weld group statics, consistent with the AISC Steel Construction Manual and AWS D1.1 Structural Welding Code. Welds are treated as line segments with effective throat thickness $t = 0.7071 \cdot h$.
+                    </p>
+                </div>
 
-            <h3>1. Effective Throat & Unit Properties</h3>
-            <p>For standard 45° fillet welds with leg size <em>h</em>, the effective throat size <em>t</em> is defined as:</p>
-            <div class="eq-block">t = 0.7071 · h</div>
-            <p>Area and second moment of area properties are calculated as line elements (<em>A<sub>u</sub>, I<sub>ux</sub>, I<sub>uy</sub>, J<sub>u</sub></em>) and multiplied by throat thickness <em>t</em>:</p>
-            <div class="eq-block">A = t · A<sub>u</sub>, &nbsp;&nbsp; I<sub>x</sub> = t · I<sub>ux</sub>, &nbsp;&nbsp; I<sub>y</sub> = t · I<sub>uy</sub>, &nbsp;&nbsp; J = t · J<sub>u</sub></div>
+                <hr class="border-slate-200">
 
-            <h3>2. Centroidal Moment Resolution</h3>
-            <p>All applied force vectors <strong>F</strong> = (F<sub>x</sub>, F<sub>y</sub>, F<sub>z</sub>) applied at location (x<sub>p</sub>, y<sub>p</sub>, z<sub>p</sub>) are translated to the centroid of the weld group (x̄, ȳ, 0). The total net moments are resolved as:</p>
-            <div class="eq-block">
-                M<sub>x</sub> = M<sub>x,ext</sub> + (y<sub>p</sub> - ȳ)F<sub>z</sub> - z<sub>p</sub>F<sub>y</sub> &nbsp;&nbsp; (Bending about X)<br>
-                M<sub>y</sub> = M<sub>y,ext</sub> + z<sub>p</sub>F<sub>x</sub> - (x<sub>p</sub> - x̄)F<sub>z</sub> &nbsp;&nbsp; (Bending about Y)<br>
-                M<sub>z</sub> = M<sub>z,ext</sub> + (x<sub>p</sub> - x̄)F<sub>y</sub> - (y<sub>p</sub> - ȳ)F<sub>x</sub> &nbsp;&nbsp; (Torsion about Z)
-            </div>
+                <!-- Equation 1 -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-800">1. Effective Throat & Area</h3>
+                    <p class="text-xs text-slate-600">
+                        For a standard equal-leg fillet weld with leg size $h$:
+                    </p>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$t = h \cdot \sin(45^\circ) \approx 0.7071 \cdot h, \quad A_w = t \cdot L_{total}$$
+                    </div>
+                </div>
 
-            <h3>3. Stress Vector Components at Hotspot Points</h3>
-            <p>At any evaluation point (x, y) with relative distance r<sub>x</sub> = x - x̄ and r<sub>y</sub> = y - ȳ, shear stress components are resolved in 3D orthogonal directions:</p>
+                <!-- Equation 2 -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-800">2. Centroid of Weld Group Line Pattern</h3>
+                    <p class="text-xs text-slate-600">
+                        The centroid $(\bar{x}, \bar{y})$ of the multi-segment weld pattern is determined using the first moment of area method:
+                    </p>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\bar{x} = \frac{\sum L_i \cdot x_i}{\sum L_i}, \quad \bar{y} = \frac{\sum L_i \cdot y_i}{\sum L_i}$$
+                    </div>
+                </div>
 
-            <ul>
-                <li><strong>Direct Primary Shear (In-Plane & Out-of-Plane):</strong>
-                    <div class="eq-block">τ'<sub>x</sub> = F<sub>x</sub> / A, &nbsp;&nbsp; τ'<sub>y</sub> = F<sub>y</sub> / A, &nbsp;&nbsp; τ'<sub>z</sub> = F<sub>z</sub> / A</div>
-                </li>
-                <li><strong>In-Plane Secondary Shear (Torsion M<sub>z</sub>):</strong>
-                    <div class="eq-block">τ''<sub>t,x</sub> = - (M<sub>z</sub> · r<sub>y</sub>) / J, &nbsp;&nbsp; τ''<sub>t,y</sub> = (M<sub>z</sub> · r<sub>x</sub>) / J</div>
-                </li>
-                <li><strong>Out-of-Plane Throat Shear (Bending M<sub>x</sub>, M<sub>y</sub>):</strong>
-                    <div class="eq-block">τ''<sub>b,z</sub> = (M<sub>x</sub> · r<sub>y</sub>) / I<sub>x</sub> - (M<sub>y</sub> · r<sub>x</sub>) / I<sub>y</sub></div>
-                </li>
-            </ul>
+                <!-- Equation 3 -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-800">3. Unit vs Total Moments of Inertia</h3>
+                    <p class="text-xs text-slate-600">
+                        Unit line inertias ($I_{xw}, I_{yw}, J_w$) are calculated per unit throat, then converted to actual section inertias:
+                    </p>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$I_x = t \cdot I_{xw}, \quad I_y = t \cdot I_{yw}, \quad J = t \cdot J_w = I_x + I_y$$
+                    </div>
+                </div>
 
-            <h3>4. Combined Vector Resultant Stress & Allowables</h3>
-            <p>The total shear stress vector magnitude on the throat plane is calculated by taking the Euclidean vector norm of all components:</p>
-            <div class="eq-block">
-                τ<sub>x</sub> = τ'<sub>x</sub> + τ''<sub>t,x</sub><br>
-                τ<sub>y</sub> = τ'<sub>y</sub> + τ''<sub>t,y</sub><br>
-                τ<sub>z</sub> = τ'<sub>z</sub> + τ''<sub>b,z</sub><br>
-                <strong>τ<sub>max</sub> = √( τ<sub>x</sub>² + τ<sub>y</sub>² + τ<sub>z</sub>² )</strong>
-            </div>
+                <!-- Equation 4 -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-800">4. Induced Moments & Total Vector Stresses</h3>
+                    <p class="text-xs text-slate-600">
+                        Loads applied at location $(x_L, y_L, z_L)$ induce additional moments about the weld group centroid:
+                    </p>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\mathbf{M}_{total} = \mathbf{M}_{applied} + \mathbf{r} \times \mathbf{F}$$
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\tau_{x,k} = \frac{F_x}{A_w} - \frac{M_{z,total} \cdot (y_k - \bar{y})}{J}, \quad \tau_{y,k} = \frac{F_y}{A_w} + \frac{M_{z,total} \cdot (x_k - \bar{x})}{J}$$
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\tau_{z,k} = \frac{F_z}{A_w} + \frac{M_{x,total} \cdot (y_k - \bar{y})}{I_x} - \frac{M_{y,total} \cdot (x_k - \bar{x})}{I_y}$$
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\tau_{resultant,k} = \sqrt{\tau_{x,k}^2 + \tau_{y,k}^2 + \tau_{z,k}^2}$$
+                    </div>
+                </div>
 
-            <p>Per AISC and AWS specifications, allowable shear stress for weld metal (based on electrode ultimate tensile strength S<sub>ut</sub>) is given by:</p>
-            <div class="eq-block">
-                τ<sub>allow</sub> = 0.30 · S<sub>ut</sub> &nbsp;&nbsp;&nbsp;&nbsp;
-                n (Factor of Safety) = τ<sub>allow</sub> / τ<sub>max</sub>
+                <!-- Equation 5 -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-bold text-slate-800">5. Safety Factor Evaluation</h3>
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm font-mono text-center">
+                        $$\text{Factor of Safety } (n) = \frac{\tau_{allow}}{\max(\tau_{resultant})}$$
+                    </div>
+                </div>
+
             </div>
         </div>
 
-        <div class="card">
-            <h2>References & Engineering Standards</h2>
-            <ol class="ref-list">
-                <li>
-                    <strong>Budynas, R. G., & Nisbett, J. K.</strong> (2020). <em>Shigley's Mechanical Engineering Design</em> (11th ed.). McGraw-Hill Education.
-                    <br><em>Chapter 9: Welding, Bonding, and the Design of Permanent Joints — Table 9-1 (Torsion) & Table 9-2 (Bending).</em>
-                </li>
-                <li>
-                    <strong>Blodgett, O. W.</strong> (1963). <em>Design of Weldments</em>. James F. Lincoln Arc Welding Foundation.
-                    <br><em>Foundational standard introducing the unit line method for structural weld sizing.</em>
-                </li>
-                <li>
-                    <strong>American Welding Society (AWS).</strong> (2020). <em>Structural Welding Code – Steel (AWS D1.1/D1.1M)</em>.
-                    <br><em>Defines throat dimension conversions, nominal weld capacities, and 0.30 Ultimate Strength shear limits.</em>
-                </li>
-                <li>
-                    <strong>American Institute of Steel Construction (AISC).</strong> (2017). <em>Steel Construction Manual</em> (15th ed.).
-                    <br><em>Part 8: Design Considerations for Welds and Weld Group Moment Inertia Approximations.</em>
-                </li>
-            </ol>
-        </div>
-    </div>
-</div>
+    </main>
 
-<script src="js/weld_strength.js" defer></script>
+    <!-- Script Logic -->
+    <script>// State Management
+    const state = {
+        unitSystem: 'SI',
+        pattern: 'L', // Weld pattern type
+        h: 0.25, // Leg size in inches
+        b: 4.0, // Horizontal length in inches
+        d: 4.0, // Vertical length in inches
+        Fx: 0, // Force in X direction in lbf
+        Fy: -4500, // Force in Y direction in lbf
+        Fz: 0, // Force in Z direction in lbf
+        Mx: 0, // Moment about X in in-lbf
+        My: 0, // Moment about Y in in-lbf
+        Mz: 18000, // Moment about Z in in-lbf
+        xL: 3.0, // Load application point X in inches
+        yL: 4.0, // Load application point Y in inches
+        zL: 0.0, // Load application point Z in inches
+        tau_allow: 21000, // Allowable shear stress in psi
+        xCustom: 3.0, // Custom point X in inches
+        yCustom: 4.0, // Custom point Y in inches
+
+    };
+    // Global State
+    let currentUnits = 'imperial'; // 'imperial' or 'si'
+
+    function triggerMathRender() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+          ]
+        });
+      }
+    }
+
+    function switchTab(tab) {
+      const calcTab = document.getElementById('tab-calc');
+      const theoryTab = document.getElementById('tab-theory');
+      const btnCalc = document.getElementById('tab-btn-calc');
+      const btnTheory = document.getElementById('tab-btn-theory');
+
+      const styleSelected = "px-4 py-2 text-sm font-semibold border-b-2 border-sky-400 text-sky-400 flex items-center gap-2 transition-all";
+      const styleUnselected = "px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all";
+
+      if (tab === 'calc') {
+        calcTab.classList.remove('hidden');
+        theoryTab.classList.add('hidden');
+        btnCalc.className = styleSelected;
+        btnTheory.className = styleUnselected;
+      } else {
+        calcTab.classList.add('hidden');
+        theoryTab.classList.remove('hidden');
+        btnTheory.className = styleSelected;
+        btnCalc.className = styleUnselected;
+      }
+      triggerMathRender();
+    }
+
+    function setUnits(unitType) {
+      if (currentUnits === unitType) return;
+      currentUnits = unitType;
+
+      const usLabel = document.getElementById('unit-label-us');
+      const siLabel = document.getElementById('unit-label-si');
+
+      // Conversion multipliers
+      const in_to_mm = 25.4;
+      const lbf_to_N = 4.44822;
+      const inlb_to_Nm = 0.112985;
+      const psi_to_MPa = 0.00689476;
+
+      if (unitType === 'si') {
+          usLabel.className = "px-3 py-1 rounded-md font-medium text-slate-400 hover:text-white transition-all";
+          siLabel.className = "px-3 py-1 rounded-md font-medium text-white bg-sky-600 transition-all";
+
+        document.querySelectorAll('.unit-dist').forEach(el => el.textContent = 'mm');
+        document.querySelectorAll('.unit-force').forEach(el => el.textContent = 'N');
+        document.querySelectorAll('.unit-moment').forEach(el => el.textContent = 'N-m');
+        document.querySelectorAll('.unit-stress').forEach(el => el.textContent = 'MPa');
+
+        // Convert input values
+        document.getElementById('input-h').value = (parseFloat(document.getElementById('input-h').value) * in_to_mm).toFixed(1);
+        document.getElementById('input-b').value = Math.round(parseFloat(document.getElementById('input-b').value) * in_to_mm);
+        document.getElementById('input-d').value = Math.round(parseFloat(document.getElementById('input-d').value) * in_to_mm);
+
+        document.getElementById('input-xl').value = Math.round(parseFloat(document.getElementById('input-xl').value) * in_to_mm);
+        document.getElementById('input-yl').value = Math.round(parseFloat(document.getElementById('input-yl').value) * in_to_mm);
+        document.getElementById('input-zl').value = Math.round(parseFloat(document.getElementById('input-zl').value) * in_to_mm);
+
+        document.getElementById('input-custom-x').value = Math.round(parseFloat(document.getElementById('input-custom-x').value) * in_to_mm);
+        document.getElementById('input-custom-y').value = Math.round(parseFloat(document.getElementById('input-custom-y').value) * in_to_mm);
+
+        document.getElementById('input-fx').value = Math.round(parseFloat(document.getElementById('input-fx').value) * lbf_to_N);
+        document.getElementById('input-fy').value = Math.round(parseFloat(document.getElementById('input-fy').value) * lbf_to_N);
+        document.getElementById('input-fz').value = Math.round(parseFloat(document.getElementById('input-fz').value) * lbf_to_N);
+
+        document.getElementById('input-mx').value = Math.round(parseFloat(document.getElementById('input-mx').value) * inlb_to_Nm);
+        document.getElementById('input-my').value = Math.round(parseFloat(document.getElementById('input-my').value) * inlb_to_Nm);
+        document.getElementById('input-mz').value = Math.round(parseFloat(document.getElementById('input-mz').value) * inlb_to_Nm);
+
+        document.getElementById('input-tau-allow').value = Math.round(parseFloat(document.getElementById('input-tau-allow').value) * psi_to_MPa);
+      } else {
+        usLabel.className = "px-3 py-1 rounded-md font-medium text-white bg-sky-600 transition-all";
+        siLabel.className = "px-3 py-1 rounded-md font-medium text-slate-400 hover:text-white transition-all";
+
+        document.querySelectorAll('.unit-dist').forEach(el => el.textContent = 'in');
+        document.querySelectorAll('.unit-force').forEach(el => el.textContent = 'lbf');
+        document.querySelectorAll('.unit-moment').forEach(el => el.textContent = 'in-lb');
+        document.querySelectorAll('.unit-stress').forEach(el => el.textContent = 'psi');
+
+        document.getElementById('input-h').value = (parseFloat(document.getElementById('input-h').value) / in_to_mm).toFixed(2);
+        document.getElementById('input-b').value = (parseFloat(document.getElementById('input-b').value) / in_to_mm).toFixed(1);
+        document.getElementById('input-d').value = (parseFloat(document.getElementById('input-d').value) / in_to_mm).toFixed(1);
+
+        document.getElementById('input-xl').value = (parseFloat(document.getElementById('input-xl').value) / in_to_mm).toFixed(1);
+        document.getElementById('input-yl').value = (parseFloat(document.getElementById('input-yl').value) / in_to_mm).toFixed(1);
+        document.getElementById('input-zl').value = (parseFloat(document.getElementById('input-zl').value) / in_to_mm).toFixed(1);
+
+        document.getElementById('input-custom-x').value = (parseFloat(document.getElementById('input-custom-x').value) / in_to_mm).toFixed(1);
+        document.getElementById('input-custom-y').value = (parseFloat(document.getElementById('input-custom-y').value) / in_to_mm).toFixed(1);
+
+        document.getElementById('input-fx').value = Math.round(parseFloat(document.getElementById('input-fx').value) / lbf_to_N);
+        document.getElementById('input-fy').value = Math.round(parseFloat(document.getElementById('input-fy').value) / lbf_to_N);
+        document.getElementById('input-fz').value = Math.round(parseFloat(document.getElementById('input-fz').value) / lbf_to_N);
+
+        document.getElementById('input-mx').value = Math.round(parseFloat(document.getElementById('input-mx').value) / inlb_to_Nm);
+        document.getElementById('input-my').value = Math.round(parseFloat(document.getElementById('input-my').value) / inlb_to_Nm);
+        document.getElementById('input-mz').value = Math.round(parseFloat(document.getElementById('input-mz').value) / inlb_to_Nm);
+
+        document.getElementById('input-tau-allow').value = Math.round(parseFloat(document.getElementById('input-tau-allow').value) / psi_to_MPa);
+      }
+
+      calculate();
+    }
+
+    // Function to update the external state object with fresh DOM values
+    function refreshState() {
+        state.pattern = document.getElementById('input-pattern').value;
+        state.h = parseFloat(document.getElementById('input-h').value) || 0.01;
+        state.b = parseFloat(document.getElementById('input-b').value) || 0.01;
+        state.d = parseFloat(document.getElementById('input-d').value) || 0.01;
+
+        // Forces
+        state.Fx = parseFloat(document.getElementById('input-fx').value) || 0;
+        state.Fy = parseFloat(document.getElementById('input-fy').value) || 0;
+        state.Fz = parseFloat(document.getElementById('input-fz').value) || 0;
+
+        // Locations
+        state.xL = parseFloat(document.getElementById('input-xl').value) || 0;
+        state.yL = parseFloat(document.getElementById('input-yl').value) || 0;
+        state.zL = parseFloat(document.getElementById('input-zl').value) || 0;
+
+        // Applied Direct Moments
+        state.Mx = parseFloat(document.getElementById('input-mx').value) || 0;
+        state.My = parseFloat(document.getElementById('input-my').value) || 0;
+        state.Mz = parseFloat(document.getElementById('input-mz').value) || 0;
+
+        state.xCustom = parseFloat(document.getElementById('input-custom-x')?.value) || 0;
+        state.yCustom = parseFloat(document.getElementById('input-custom-y')?.value) || 0;
+
+        state.tau_allow = parseFloat(document.getElementById('input-tau-allow').value) || 1;
+
+        return state;
+    }
+
+    function calculate() {
+        const inputstate = refreshState();
+
+        // Destructure using 'let' so Mx, My, Mz can still be mutated for SI conversion
+        const {
+            pattern, h, b, d,
+            Fx, Fy, Fz,
+            Mx, My, Mz,
+            xL, yL, zL,
+            tau_allow, xCustom, yCustom,
+        } = inputstate;
+
+      // Toggle d input visibility for circular weld
+      const wrapperD = document.getElementById('wrapper-d');
+      if (pattern === 'circular') {
+        wrapperD .classList.add('hidden');
+      } else {
+        wrapperD.classList.remove('hidden');
+      }
+
+      // 1. Calculate Throat & Geometry Properties
+      const t = 0.7071 * h;
+
+        let Au = 0, xc = 0, yc = 0, Iux = 0, Iuy = 0, Ju = 0;
+        let points = [];
+        let segments = []; // Array of line segments for drawing [{x1,y1,x2,y2}]
+
+        // Line weld geometry formulas (Shigley Tables 9-1 & 9-2)
+        if (pattern === 'single') {
+            Au = d; xc = 0; yc = d / 2;
+            Iux = Math.pow(d, 3) / 12; Iuy = 0; Ju = Iux;
+            points = [{ name: 'Bottom', x: 0, y: 0 }, { name: 'Top', x: 0, y: d }];
+            segments = [{ x1: 0, y1: 0, x2: 0, y2: d }];
+        } else if (pattern === 'two_vert') {
+            Au = 2 * d; xc = b / 2; yc = d / 2;
+            Iux = Math.pow(d, 3) / 6; Iuy = (Math.pow(b, 2) * d) / 2; Ju = Iux + Iuy;
+            points = [{ name: 'BL', x: 0, y: 0 }, { name: 'TL', x: 0, y: d }, { name: 'BR', x: b, y: 0 }, { name: 'TR', x: b, y: d }];
+            segments = [{ x1: 0, y1: 0, x2: 0, y2: d }, { x1: b, y1: 0, x2: b, y2: d }];
+        } else if (pattern === 'two_horiz') {
+            Au = 2 * b; xc = b / 2; yc = d / 2;
+            Iux = (b * Math.pow(d, 2)) / 2; Iuy = Math.pow(b, 3) / 6; Ju = Iux + Iuy;
+            points = [{ name: 'BL', x: 0, y: 0 }, { name: 'BR', x: b, y: 0 }, { name: 'TL', x: 0, y: d }, { name: 'TR', x: b, y: d }];
+            segments = [{ x1: 0, y1: 0, x2: b, y2: 0 }, { x1: 0, y1: d, x2: b, y2: d }];
+        } else if (pattern === 'l_shape') {
+            Au = b + d; xc = Math.pow(b, 2) / (2 * (b + d)); yc = Math.pow(d, 2) / (2 * (b + d));
+            Iux = (Math.pow(d, 3) * (4 * b + d)) / (12 * (b + d));
+            Iuy = (Math.pow(b, 3) * (4 * d + b)) / (12 * (b + d)); Ju = Iux + Iuy;
+            points = [{ name: 'Corner', x: 0, y: 0 }, { name: 'Horiz End', x: b, y: 0 }, { name: 'Vert End', x: 0, y: d }];
+            segments = [{ x1: 0, y1: d, x2: 0, y2: 0 }, { x1: 0, y1: 0, x2: b, y2: 0 }];
+        } else if (pattern === 'u_shape') {
+            Au = 2 * b + d; xc = Math.pow(b, 2) / (2 * b + d); yc = d / 2;
+            Iux = (Math.pow(d, 2) * (6 * b + d)) / 12;
+            Iuy = (2 * Math.pow(b, 3) / 3) - (Math.pow(b, 4) / (2 * b + d)); Ju = Iux + Iuy;
+            points = [{ name: 'BL', x: 0, y: 0 }, { name: 'TL', x: 0, y: d }, { name: 'BR', x: b, y: 0 }, { name: 'TR', x: b, y: d }];
+            segments = [{ x1: 0, y1: d, x2: 0, y2: 0 }, { x1: 0, y1: 0, x2: b, y2: 0 }, { x1: b, y1: 0, x2: b, y2: d }];
+        } else if (pattern === 'rect') {
+            Au = 2 * b + 2 * d; xc = b / 2; yc = d / 2;
+            Iux = (Math.pow(d, 2) * (3 * b + d)) / 6; Iuy = (Math.pow(b, 2) * (3 * d + b)) / 6; Ju = Iux + Iuy;
+            points = [{ name: 'BL', x: 0, y: 0 }, { name: 'BR', x: b, y: 0 }, { name: 'TL', x: 0, y: d }, { name: 'TR', x: b, y: d }];
+            segments = [
+                { x1: 0, y1: 0, x2: b, y2: 0 }, { x1: b, y1: 0, x2: b, y2: d },
+                { x1: b, y1: d, x2: 0, y2: d }, { x1: 0, y1: d, x2: 0, y2: 0 }
+            ];
+        } else if (pattern === 'circular') {
+            Au = Math.PI * b; xc = b / 2; yc = b / 2;
+            Iux = (Math.PI * Math.pow(b, 3)) / 8; Iuy = Iux; Ju = (Math.PI * Math.pow(b, 3)) / 4;
+            points = [{ name: 'Bottom', x: b / 2, y: 0 }, { name: 'Top', x: b / 2, y: b }, { name: 'Left', x: 0, y: b / 2 }, { name: 'Right', x: b, y: b / 2 }];
+        } else if (pattern === 't_shape') {
+            Au = b + d; xc = b / 2; yc = (Math.pow(d, 2) + 2 * b * d) / (2 * (b + d));
+            Iux = (Math.pow(d, 3) * (4 * b + d)) / (12 * (b + d)); Iuy = Math.pow(b, 3) / 12; Ju = Iux + Iuy;
+            points = [{ name: 'TL', x: 0, y: d }, { name: 'TR', x: b, y: d }, { name: 'Bottom', x: b / 2, y: 0 }];
+            segments = [{ x1: 0, y1: d, x2: b, y2: d }, { x1: b / 2, y1: 0, x2: b / 2, y2: d }];
+        }
+
+        // Add custom check point if provided and not zero
+        if (!isNaN(xCustom) && !isNaN(yCustom) && (xCustom !== 0 || yCustom !== 0)) {
+            points.push({ name: 'Custom', x: xCustom, y: yCustom });
+        }
+
+      // Total Section Properties (incorporating effective throat t)
+      const A = Au * t;
+      const Ix = t * Iux;
+      const Iy = t * Iuy;
+      const J = t * Ju;
+
+      // 2. Compute Induced Moments about Centroid (r x F + M)
+      const rx = xL - xc;
+      const ry = yL - yc;
+      const rz = zL;
+
+      const Mx_tot = Mx + (ry * Fz - rz * Fy);
+      const My_tot = My + (rz * Fx - rx * Fz);
+      const Mz_tot = Mz + (rx * Fy - ry * Fx);
+
+        // Direct Shears
+        const tau_prime_x = Fx / A;
+        const tau_prime_y = Fy / A;
+        const tau_prime_z = Fz / A;
+
+        let tableHtml = '';
+        let maxTau = -1;
+        let maxPtName = '';
+
+        const results = points.map(pt => {
+            const dx = pt.x - xc;
+            const dy = pt.y - yc;
+
+            // Torsional Shear
+            const tau_double_tx = -(Mz_tot * dy) / J;
+            const tau_double_ty = (Mz_tot * dx) / J;
+
+            // Bending Shear in Z
+            const tau_double_bx_1 = Ix > 0 ? ((Mx_tot * dy) / Ix) * (currentUnits === 'si' ? 1000 : 1) : 0; //convert N*m to N*mm
+            const tau_double_bx_2 = Iy > 0 ? ((My_tot * dx) / Iy) * (currentUnits === 'si' ? 1000 : 1) : 0; //convert N*m to N*mm
+            const tau_double_bz = tau_double_bx_1 - tau_double_bx_2;
+
+            // Net Stress Vector Components
+            const tau_x = tau_prime_x + tau_double_tx;
+            const tau_y = tau_prime_y + tau_double_ty;
+            const tau_z = tau_prime_z + tau_double_bz;
+
+            const tau_total = Math.sqrt(tau_x * tau_x + tau_y * tau_y + tau_z * tau_z);
+
+            if (tau_total > maxTau) {
+                maxTau = tau_total;
+                maxPtName = pt.name;
+            }
+
+            return {
+                name: pt.name,
+                x: pt.x,
+                y: pt.y,
+                tau_prime_x,
+                tau_prime_y,
+                tau_prime_z,
+                tau_double_tx,
+                tau_double_ty,
+                tau_double_bz,
+                tau_x,
+                tau_y,
+                tau_z,
+                tau_total
+            };
+        });
+
+        results.forEach(res => {
+            const isMax = Math.abs(res.tau_total - maxTau) < 1e-5;
+            const isOver = res.tau_total > tau_allow;
+            const statusBadge = isOver ?
+                `<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold">EXCEEDED</span>` :
+                `<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">OK</span>`;
+            tableHtml += `<tr class="${isMax ? 'bg-red-800/15' : ''}">
+            <td class="px-4 py-2 font-bold text-slate-800">${res.name} ${isMax ? '★' : ''}</td>
+            <td class="px-4 py-2 text-slate-500">(${res.x.toFixed(2)}, ${res.y.toFixed(2)})</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_prime_x.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_prime_y.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_prime_z.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_double_tx.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_double_ty.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_double_bz.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_x.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_y.toFixed(1)}</td>
+            <td class="px-4 py-2 text-slate-600">${res.tau_z.toFixed(1)}</td>
+            <td class="px-4 py-2 font-bold text-slate-900"><strong>${res.tau_total.toFixed(1)}</strong></td>
+            <td class="px-4 py-2 text-right">${statusBadge}</td>
+        </tr>`;
+        });
+
+      document.getElementById('hotspot-table-body').innerHTML = tableHtml;
+
+      // 4. Update Section Properties UI
+      const distUnit = currentUnits === 'imperial' ? 'in' : 'mm';
+      const areaUnit = currentUnits === 'imperial' ? 'in²' : 'mm²';
+      const in3Unit = currentUnits === 'imperial' ? 'in³' : 'mm³';
+      const in4Unit = currentUnits === 'imperial' ? 'in⁴' : 'mm⁴';
+
+      document.getElementById('val-t').textContent = `${t.toFixed(4)} ${distUnit}`;
+      document.getElementById('val-centroid').textContent = `(${xc.toFixed(2)}, ${yc.toFixed(2)}) ${distUnit}`;
+      document.getElementById('val-aw').textContent = `${A.toFixed(2)} ${areaUnit}`;
+
+      // Unit line properties
+      document.getElementById('val-length-unit').textContent = `${Au.toFixed(2)} ${distUnit}`;
+      document.getElementById('val-ixw').textContent = `${Math.round(Iux).toLocaleString()} ${in3Unit}`;
+      document.getElementById('val-iyw').textContent = `${Math.round(Iuy).toLocaleString()} ${in3Unit}`;
+      document.getElementById('val-jw').textContent = `${Math.round(Ju).toLocaleString()} ${in3Unit}`;
+
+      // Total actual properties
+      document.getElementById('val-area-total').textContent = `${A.toFixed(2)} ${areaUnit}`;
+      document.getElementById('val-ix-total').textContent = `${Math.round(Ix).toLocaleString()} ${in4Unit}`;
+      document.getElementById('val-iy-total').textContent = `${Math.round(Iy).toLocaleString()} ${in4Unit}`;
+      document.getElementById('val-j-total').textContent = `${Math.round(J).toLocaleString()} ${in4Unit}`;
+
+      // 5. Update Applied Loads UI
+      const forceUnit = currentUnits === 'imperial' ? 'lbf' : 'N';
+      const momentUnit = currentUnits === 'imperial' ? 'lbf-in' : 'N-m';
+
+      document.getElementById('val-fx').textContent = `${Fx.toFixed(0)} ${forceUnit}`;
+      document.getElementById('val-fy').textContent = `${Fy.toFixed(0)} ${forceUnit}`;
+      document.getElementById('val-fz').textContent = `${Fz.toFixed(0)} ${forceUnit}`;
+      document.getElementById('val-mx-total').textContent = `${Mx_tot.toFixed(0)} ${momentUnit}`;
+      document.getElementById('val-my-total').textContent = `${My_tot.toFixed(0)} ${momentUnit}`;
+      document.getElementById('val-mz-total').textContent = `${Mz_tot.toFixed(0)} ${momentUnit}`;
+
+      // 6. Update Factor of Safety & Status Banner
+      const stressUnit = currentUnits === 'imperial' ? 'psi' : 'N/mm²';
+      const FS = tau_allow / (maxTau || 1);
+      const statusCard = document.getElementById('status-card');
+      const statusBadge = document.getElementById('status-badge');
+      const statusIconBg = document.getElementById('status-icon-bg');
+      const statusIcon = document.getElementById('status-icon');
+      const statusTitle = document.getElementById('status-title');
+      const valTauMaxBadge = document.getElementById('val-tau-max-badge');
+
+      valTauMaxBadge.textContent = `${Math.round(maxTau).toLocaleString()} ${stressUnit}`;
+
+      if (FS >= 1.0) {
+        statusCard.className = "bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between";
+        statusIconBg.className = "w-12 h-12 rounded-lg bg-emerald-500 text-white flex items-center justify-center text-2xl font-bold";
+        statusIcon.className = "fa-solid fa-check";
+        statusBadge.className = "px-2 py-0.5 rounded text-xs font-extrabold tracking-wider bg-emerald-500 text-white uppercase";
+        statusBadge.textContent = "SAFE DESIGN";
+        statusTitle.textContent = `Factor of Safety n = ${FS.toFixed(2)}`;
+      } else {
+        statusCard.className = "bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center justify-between";
+        statusIconBg.className = "w-12 h-12 rounded-lg bg-red-500 text-white flex items-center justify-center text-2xl font-bold";
+        statusIcon.className = "fa-solid fa-triangle-exclamation";
+        statusBadge.className = "px-2 py-0.5 rounded text-xs font-extrabold tracking-wider bg-red-500 text-white uppercase";
+        statusBadge.textContent = "OVERSTRESSED";
+        statusTitle.textContent = `Factor of Safety n = ${FS.toFixed(2)} (UNSAFE)`;
+      }
+
+      // 8. Draw Canvas Diagram
+      drawCanvas(pattern, b, d, xc, yc, segments, points, Fx, Fy, Mz_tot, xL, yL, xCustom, yCustom);
+
+      triggerMathRender();
+    }
+
+    function drawCanvas(pattern, b, d, xc, yc, segments, points, Fx, Fy, Mz, xL, yL, xCustom, yCustom) {
+      const canvas = document.getElementById('weldCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const width = rect.width;
+      const height = rect.height;
+
+      // Dark background
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, width, height);
+
+      // Grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      const gridSize = 20;
+      for (let x = 0; x < width; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+
+      const margin = 70;
+      const maxDimX = pattern === 'circular' ? b : b;
+      const maxDimY = pattern === 'circular' ? b : d;
+
+      const scaleX = (width - 2 * margin) / (maxDimX || 1);
+      const scaleY = (height - 2 * margin) / (maxDimY || 1);
+      const scale = Math.min(scaleX, scaleY);
+
+      const offsetX = (width - maxDimX * scale) / 2;
+      const offsetY = height - (height - maxDimY * scale) / 2;
+
+      function toCanvasX(x) { return offsetX + x * scale; }
+      function toCanvasY(y) { return offsetY - y * scale; }
+
+      // 1. Draw Weld Lines
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+
+      if (pattern === 'circular') {
+        ctx.beginPath();
+        ctx.arc(toCanvasX(b/2), toCanvasY(b/2), (b/2) * scale, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else {
+        segments.forEach(line => {
+          ctx.beginPath();
+          ctx.moveTo(toCanvasX(line.x1), toCanvasY(line.y1));
+          ctx.lineTo(toCanvasX(line.x2), toCanvasY(line.y2));
+          ctx.stroke();
+        });
+      }
+
+      // 2. Draw Hotspot Nodes (Explicit Node 1, Node 2 labels matching table)
+      points.forEach(point => {
+        const px = toCanvasX(point.x);
+        const py = toCanvasY(point.y);
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(point.name, px + 8, py - 6);
+      });
+
+      // 3. Draw Custom Point (Crosshair)
+      const cxX = toCanvasX(xCustom);
+      const cxY = toCanvasY(yCustom);
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cxX, cxY, 6, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.fillStyle = '#c084fc';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText('Custom Pt', cxX + 8, cxY + 12);
+
+      // 4. Centroid
+      const cCanvasX = toCanvasX(xc);
+      const cCanvasY = toCanvasY(yc);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(cCanvasX, cCanvasY, 6, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.strokeStyle = '#fca5a5';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cCanvasX, cCanvasY, 11, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('CG', cCanvasX + 12, cCanvasY + 4);
+
+      // 5. Force & Moment Vectors at Load Application Point
+      const loadCanvasX = toCanvasX(xL);
+      const loadCanvasY = toCanvasY(yL);
+      const vectorScale = 0.003 * scale;
+
+      if (Math.abs(Fx) > 10) {
+        drawArrow(ctx, loadCanvasX, loadCanvasY, loadCanvasX + Fx * vectorScale, loadCanvasY, '#22c55e', 'Fx');
+      }
+      if (Math.abs(Fy) > 10) {
+        drawArrow(ctx, loadCanvasX, loadCanvasY, loadCanvasX, loadCanvasY - Fy * vectorScale, '#22c55e', 'Fy');
+      }
+      if (Math.abs(Mz) > 10) {
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(loadCanvasX, loadCanvasY, 22, 0.2 * Math.PI, 1.5 * Math.PI, Mz < 0);
+        ctx.stroke();
+        ctx.fillStyle = '#c084fc';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('Mz', loadCanvasX + 24, loadCanvasY - 18);
+      }
+    }
+
+    function drawArrow(ctx, fromX, fromY, toX, toY, color, label) {
+      const headLength = 8;
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const angle = Math.atan2(dy, dx);
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = '10px sans-serif';
+      ctx.fillText(label, toX + 6, toY + 4);
+    }
+
+    // Initial Execution
+    window.onload = () => {
+      calculate();
+    };
+
+    window.onresize = () => {
+      calculate();
+    };</script>
 </body>
 </html>
