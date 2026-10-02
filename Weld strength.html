@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS / Shigley 3D Weld Strength Calculator</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="container">
+    <div style="margin-bottom: 15px;">
+        <a href="index.html" class="home-link">← Back to Home</a>
+    </div>
+
+    <h1>AWS / Shigley Weld Group Analysis Tool</h1>
+
+    <!-- Tab Bar -->
+    <div class="tab-nav">
+        <button class="tab-btn active" onclick="openTab('calculatorTab', this)">Interactive Calculator</button>
+        <button class="tab-btn" onclick="openTab('referenceTab', this)">References & Governing Equations</button>
+    </div>
+
+    <!-- TAB 1: CALCULATOR -->
+    <div id="calculatorTab" class="tab-content active">
+        <div class="grid">
+            <!-- Inputs Column -->
+            <div>
+                <div class="card">
+                    <h2>1. Weld Pattern & Dimensions</h2>
+                    <div class="form-group" style="grid-template-columns: 1fr 2fr;">
+                        <label for="patternSelect">Pattern Type:</label>
+                        <select id="patternSelect" onchange="toggleDimensionInputs(); calculateWeld();">
+                            <option value="single">Single Vertical Line (d)</option>
+                            <option value="two_vert">Two Parallel Vertical Lines (b, d)</option>
+                            <option value="two_horiz">Two Parallel Horizontal Lines (b, d)</option>
+                            <option value="l_shape">L-Shape (b, d)</option>
+                            <option value="u_shape">U-Shape / Channel (b, d)</option>
+                            <option value="rect">Rectangular / Closed Loop (b, d)</option>
+                            <option value="circle">Circular Ring (Diameter D)</option>
+                            <option value="t_shape">T-Shape (b, d)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Weld Leg Size (h):</label>
+                        <input type="number" id="weld_h" value="0.25" step="0.01" oninput="calculateWeld()">
+                        <span>in / mm</span>
+                    </div>
+                    <div class="form-group" id="group_b">
+                        <label>Width (b):</label>
+                        <input type="number" id="dim_b" value="4.0" step="0.1" oninput="calculateWeld()">
+                        <span>in / mm</span>
+                    </div>
+                    <div class="form-group" id="group_d">
+                        <label>Height (d):</label>
+                        <input type="number" id="dim_d" value="6.0" step="0.1" oninput="calculateWeld()">
+                        <span>in / mm</span>
+                    </div>
+                    <div class="form-group" id="group_D" style="display:none;">
+                        <label>Diameter (D):</label>
+                        <input type="number" id="dim_D" value="4.0" step="0.1" oninput="calculateWeld()">
+                        <span>in / mm</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>2. Applied 3D Forces & Location</h2>
+                    <div class="form-group"><label>Force Fx:</label><input type="number" id="Fx" value="0" oninput="calculateWeld()"><span>lbf / N</span></div>
+                    <div class="form-group"><label>Force Fy:</label><input type="number" id="Fy" value="-1000" oninput="calculateWeld()"><span>lbf / N</span></div>
+                    <div class="form-group"><label>Force Fz:</label><input type="number" id="Fz" value="500" oninput="calculateWeld()"><span>lbf / N</span></div>
+                    <div class="form-group"><label>Load Pos X (xp):</label><input type="number" id="xp" value="8" oninput="calculateWeld()"><span>in / mm</span></div>
+                    <div class="form-group"><label>Load Pos Y (yp):</label><input type="number" id="yp" value="3" oninput="calculateWeld()"><span>in / mm</span></div>
+                    <div class="form-group"><label>Load Pos Z (zp):</label><input type="number" id="zp" value="2" oninput="calculateWeld()"><span>in / mm</span></div>
+                </div>
+
+                <div class="card">
+                    <h2>3. External Moments & Strength</h2>
+                    <div class="form-group"><label>Direct Moment Mx:</label><input type="number" id="Mx_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
+                    <div class="form-group"><label>Direct Moment My:</label><input type="number" id="My_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
+                    <div class="form-group"><label>Direct Torque Mz (T):</label><input type="number" id="Mz_ext" value="0" oninput="calculateWeld()"><span>in-lb / N-mm</span></div>
+                    <div class="form-group"><label>Electrode Sut (e.g. E70xx):</label><input type="number" id="Sut" value="70000" oninput="calculateWeld()"><span>psi / MPa</span></div>
+                    <div class="form-group"><label>Custom Check Pt (x, y):</label>
+                        <input type="number" id="custom_x" value="0" placeholder="x" oninput="calculateWeld()">
+                        <input type="number" id="custom_y" value="0" placeholder="y" oninput="calculateWeld()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results & Diagram Column -->
+            <div>
+                <div class="card">
+                    <h2>2D Pattern & Applied Load Diagram</h2>
+                    <canvas id="weldCanvas" width="500" height="380"></canvas>
+                </div>
+
+                <div class="card">
+                    <h2>Geometric & Throat Properties</h2>
+                    <table>
+                        <tr><th>Property</th><th>Unit Value (Au, Iu, Ju)</th><th>Throat Value (A, I, J)</th></tr>
+                        <tr><td>Effective Area</td><td id="res_Au">-</td><td id="res_A">-</td></tr>
+                        <tr><td>Centroid (x̄, ȳ)</td><td colspan="2" id="res_centroid" style="text-align:center;">-</td></tr>
+                        <tr><td>I_x (Bending)</td><td id="res_Iux">-</td><td id="res_Ix">-</td></tr>
+                        <tr><td>I_y (Bending)</td><td id="res_Iuy">-</td><td id="res_Iy">-</td></tr>
+                        <tr><td>J (Torsion)</td><td id="res_Ju">-</td><td id="res_J">-</td></tr>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2>Resolved Net Moments @ Centroid</h2>
+                    <div class="summary-box" id="moment_breakdown">
+                        Click calculate to resolve moments...
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Hotspot Stress Analysis</h2>
+                    <table id="stressTable">
+                        <thead>
+                            <tr>
+                                <th rowspan="2">Point</th>
+                                <th rowspan="2">(x, y)</th>
+                                <th colspan="3">Primary Shear (τ')</th>
+                                <th colspan="3">Secondary Shear (τ'')</th>
+                                <th colspan="3">Total Shear (τ)</th>
+                                <th rowspan="2">τ_max</th>
+                            </tr>
+                            <tr>
+                                <th>τ'x</th>
+                                <th>τ'y</th>
+                                <th>τ'z</th>
+                                <th>τ''x</th>
+                                <th>τ''y</th>
+                                <th>τ''z</th>
+                                <th>τx</th>
+                                <th>τy</th>
+                                <th>τz</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="12" style="text-align:center;">Click calculate to see results</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div class="summary-box" id="safety_summary">
+                        Factor of safety evaluation...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: REFERENCES & THEORY -->
+    <div id="referenceTab" class="tab-content">
+        <div class="card">
+            <h2>Theory & Calculation Methodology (AWS / Shigley Method)</h2>
+
+            <p>This application implements the <strong>Unit Line Weld Method</strong> established by Omer Blodgett and standardized in <em>Shigley’s Mechanical Engineering Design</em> and the AWS/AISC structural design codes. The method simplifies 3D weld group evaluation by treating welds as 1D lines and scaling properties by the minimum throat size.</p>
+
+            <h3>1. Effective Throat & Unit Properties</h3>
+            <p>For standard 45° fillet welds with leg size <em>h</em>, the effective throat size <em>t</em> is defined as:</p>
+            <div class="eq-block">t = 0.7071 · h</div>
+            <p>Area and second moment of area properties are calculated as line elements (<em>A<sub>u</sub>, I<sub>ux</sub>, I<sub>uy</sub>, J<sub>u</sub></em>) and multiplied by throat thickness <em>t</em>:</p>
+            <div class="eq-block">A = t · A<sub>u</sub>, &nbsp;&nbsp; I<sub>x</sub> = t · I<sub>ux</sub>, &nbsp;&nbsp; I<sub>y</sub> = t · I<sub>uy</sub>, &nbsp;&nbsp; J = t · J<sub>u</sub></div>
+
+            <h3>2. Centroidal Moment Resolution</h3>
+            <p>All applied force vectors <strong>F</strong> = (F<sub>x</sub>, F<sub>y</sub>, F<sub>z</sub>) applied at location (x<sub>p</sub>, y<sub>p</sub>, z<sub>p</sub>) are translated to the centroid of the weld group (x̄, ȳ, 0). The total net moments are resolved as:</p>
+            <div class="eq-block">
+                M<sub>x</sub> = M<sub>x,ext</sub> + (y<sub>p</sub> - ȳ)F<sub>z</sub> - z<sub>p</sub>F<sub>y</sub> &nbsp;&nbsp; (Bending about X)<br>
+                M<sub>y</sub> = M<sub>y,ext</sub> + z<sub>p</sub>F<sub>x</sub> - (x<sub>p</sub> - x̄)F<sub>z</sub> &nbsp;&nbsp; (Bending about Y)<br>
+                M<sub>z</sub> = M<sub>z,ext</sub> + (x<sub>p</sub> - x̄)F<sub>y</sub> - (y<sub>p</sub> - ȳ)F<sub>x</sub> &nbsp;&nbsp; (Torsion about Z)
+            </div>
+
+            <h3>3. Stress Vector Components at Hotspot Points</h3>
+            <p>At any evaluation point (x, y) with relative distance r<sub>x</sub> = x - x̄ and r<sub>y</sub> = y - ȳ, shear stress components are resolved in 3D orthogonal directions:</p>
+
+            <ul>
+                <li><strong>Direct Primary Shear (In-Plane & Out-of-Plane):</strong>
+                    <div class="eq-block">τ'<sub>x</sub> = F<sub>x</sub> / A, &nbsp;&nbsp; τ'<sub>y</sub> = F<sub>y</sub> / A, &nbsp;&nbsp; τ'<sub>z</sub> = F<sub>z</sub> / A</div>
+                </li>
+                <li><strong>In-Plane Secondary Shear (Torsion M<sub>z</sub>):</strong>
+                    <div class="eq-block">τ''<sub>t,x</sub> = - (M<sub>z</sub> · r<sub>y</sub>) / J, &nbsp;&nbsp; τ''<sub>t,y</sub> = (M<sub>z</sub> · r<sub>x</sub>) / J</div>
+                </li>
+                <li><strong>Out-of-Plane Throat Shear (Bending M<sub>x</sub>, M<sub>y</sub>):</strong>
+                    <div class="eq-block">τ''<sub>b,z</sub> = (M<sub>x</sub> · r<sub>y</sub>) / I<sub>x</sub> - (M<sub>y</sub> · r<sub>x</sub>) / I<sub>y</sub></div>
+                </li>
+            </ul>
+
+            <h3>4. Combined Vector Resultant Stress & Allowables</h3>
+            <p>The total shear stress vector magnitude on the throat plane is calculated by taking the Euclidean vector norm of all components:</p>
+            <div class="eq-block">
+                τ<sub>x</sub> = τ'<sub>x</sub> + τ''<sub>t,x</sub><br>
+                τ<sub>y</sub> = τ'<sub>y</sub> + τ''<sub>t,y</sub><br>
+                τ<sub>z</sub> = τ'<sub>z</sub> + τ''<sub>b,z</sub><br>
+                <strong>τ<sub>max</sub> = √( τ<sub>x</sub>² + τ<sub>y</sub>² + τ<sub>z</sub>² )</strong>
+            </div>
+
+            <p>Per AISC and AWS specifications, allowable shear stress for weld metal (based on electrode ultimate tensile strength S<sub>ut</sub>) is given by:</p>
+            <div class="eq-block">
+                τ<sub>allow</sub> = 0.30 · S<sub>ut</sub> &nbsp;&nbsp;&nbsp;&nbsp;
+                n (Factor of Safety) = τ<sub>allow</sub> / τ<sub>max</sub>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>References & Engineering Standards</h2>
+            <ol class="ref-list">
+                <li>
+                    <strong>Budynas, R. G., & Nisbett, J. K.</strong> (2020). <em>Shigley's Mechanical Engineering Design</em> (11th ed.). McGraw-Hill Education.
+                    <br><em>Chapter 9: Welding, Bonding, and the Design of Permanent Joints — Table 9-1 (Torsion) & Table 9-2 (Bending).</em>
+                </li>
+                <li>
+                    <strong>Blodgett, O. W.</strong> (1963). <em>Design of Weldments</em>. James F. Lincoln Arc Welding Foundation.
+                    <br><em>Foundational standard introducing the unit line method for structural weld sizing.</em>
+                </li>
+                <li>
+                    <strong>American Welding Society (AWS).</strong> (2020). <em>Structural Welding Code – Steel (AWS D1.1/D1.1M)</em>.
+                    <br><em>Defines throat dimension conversions, nominal weld capacities, and 0.30 Ultimate Strength shear limits.</em>
+                </li>
+                <li>
+                    <strong>American Institute of Steel Construction (AISC).</strong> (2017). <em>Steel Construction Manual</em> (15th ed.).
+                    <br><em>Part 8: Design Considerations for Welds and Weld Group Moment Inertia Approximations.</em>
+                </li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<script src="js/weld_strength.js" defer></script>
+</body>
+</html>
