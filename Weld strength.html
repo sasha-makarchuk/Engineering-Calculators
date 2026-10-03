@@ -47,6 +47,18 @@
         }
     </style>
 
+<!-- Unified Card Class using Tailwind @apply -->
+    <style type="text/tailwindcss">
+        @layer components {
+            .card {
+                @apply bg-white rounded-xl shadow-sm border border-slate-200 p-5;
+            }
+			.card-title {@apply text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center;}
+			.label-input {@apply block text-xs font-semibold text-slate-700 mb-1;}
+			.box-input {@apply w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono;}
+        }
+    </style>
+
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
@@ -100,14 +112,14 @@
                 <div class="lg:col-span-5 space-y-6">
 
                     <!-- Geometry Settings Card -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center">
+                    <div class="card">
+                        <h2 class="card-title">
                             <i class="fa-solid fa-shapes mr-2 text-sky-600"></i> Weld Pattern Geometry
                         </h2>
 
                         <div class="space-y-4">
                             <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Pattern Configuration</label>
+                                <label class="label-input">Pattern Configuration</label>
                                 <select id="input-pattern" onchange="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-sans">
                                     <option value="single">Single Vertical Line (d)</option>
                                     <option value="two_vert">Two Parallel Vertical Lines (b, d)</option>
@@ -122,16 +134,16 @@
 
                             <div class="grid grid-cols-1 gap-3">
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Weld Leg Size ($h$)</label>
+                                    <label class="label-input">Weld Leg Size ($h$)</label>
                                     <div class="relative">
-                                        <input type="number" id="input-h" value="0.25" step="0.01" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-h" value="0.25" step="0.01" oninput="calculate()" class="box-input">
                                         <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Width ($b$ / $D$)</label>
+                                    <label class="label-input">Width ($b$ / $D$)</label>
                                     <div class="relative">
-                                        <input type="number" id="input-b" value="6.0" step="0.1" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-b" value="6.0" step="0.1" oninput="calculate()" class="box-input">
                                         <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
                                     </div>
                                 </div>
@@ -139,9 +151,9 @@
 
                             <div id="wrapper-d" class="grid grid-cols-1 gap-3">
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Height ($d$)</label>
+                                    <label class="label-input">Height ($d$)</label>
                                     <div class="relative">
-                                        <input type="number" id="input-d" value="8.0" step="0.1" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-d" value="8.0" step="0.1" oninput="calculate()" class="box-input">
                                         <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
                                     </div>
                                 </div>
@@ -150,8 +162,8 @@
                     </div>
 
                     <!-- Applied Forces & Load Locations Card (2-Column Table) -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                    <div class="card">
+                        <h2 class="card-title">
                             <i class="fa-solid fa-arrows-down-to-line mr-2 text-sky-600"></i> Applied Forces & Load Application Points
                         </h2>
 
@@ -168,16 +180,16 @@
                                     <!-- Fx Row -->
                                     <tr>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_x$ Shear</label>
+                                            <label class="label-input">$F_x$ Shear</label>
                                             <div class="relative">
-                                                <input type="number" id="input-fx" value="1200" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-fx" value="1200" step="100" oninput="calculate()" class="box-input">
                                                 <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
                                             </div>
                                         </td>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$X_L$ Location</label>
+                                            <label class="label-input">$X_L$ Location</label>
                                             <div class="relative">
-                                                <input type="number" id="input-xl" value="3.0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-xl" value="3.0" step="0.5" oninput="calculate()" class="box-input">
                                                 <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
                                             </div>
                                         </td>
@@ -185,16 +197,16 @@
                                     <!-- Fy Row -->
                                     <tr>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_y$ Direct</label>
+                                            <label class="label-input">$F_y$ Direct</label>
                                             <div class="relative">
-                                                <input type="number" id="input-fy" value="-4500" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-fy" value="-4500" step="100" oninput="calculate()" class="box-input">
                                                 <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
                                             </div>
                                         </td>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$Y_L$ Location</label>
+                                            <label class="label-input">$Y_L$ Location</label>
                                             <div class="relative">
-                                                <input type="number" id="input-yl" value="4.0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-yl" value="4.0" step="0.5" oninput="calculate()" class="box-input">
                                                 <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
                                             </div>
                                         </td>
@@ -202,16 +214,16 @@
                                     <!-- Fz Row -->
                                     <tr>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$F_z$ Out-of-Plane</label>
+                                            <label class="label-input">$F_z$ Out-of-Plane</label>
                                             <div class="relative">
-                                                <input type="number" id="input-fz" value="0" step="100" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-fz" value="0" step="100" oninput="calculate()" class="box-input">
                                                 <span class="unit-force absolute right-2 top-1.5 text-[10px] text-slate-400">lbf</span>
                                             </div>
                                         </td>
                                         <td class="p-2">
-                                            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">$Z_L$ Offset</label>
+                                            <label class="label-input">$Z_L$ Offset</label>
                                             <div class="relative">
-                                                <input type="number" id="input-zl" value="0" step="0.5" oninput="calculate()" class="w-full bg-white border border-slate-300 rounded text-xs p-1.5 pr-8 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                                                <input type="number" id="input-zl" value="0" step="0.5" oninput="calculate()" class="box-input">
                                                 <span class="unit-dist absolute right-2 top-1.5 text-[10px] text-slate-400">in</span>
                                             </div>
                                         </td>
@@ -222,27 +234,29 @@
 
                         <!-- Applied Moments Column -->
                         <div class="space-y-3 pt-2 border-t border-slate-100">
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Applied Direct Moments</label>
+<h2 class="card-title">
+                            <i class="fa-solid fa-rotate-left mr-2 text-sky-600"></i> Applied Direct Moments
+                        </h2>
 
                             <div class="grid grid-cols-3 gap-2">
                                 <div>
-                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_x$ Bending</label>
+                                    <label class="label-input">$M_x$ Bending</label>
                                     <div class="relative">
-                                        <input type="number" id="input-mx" value="0" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-mx" value="0" step="500" oninput="calculate()" class="box-input">
                                         <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_y$ Bending</label>
+                                    <label class="label-input">$M_y$ Bending</label>
                                     <div class="relative">
-                                        <input type="number" id="input-my" value="0" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-my" value="0" step="500" oninput="calculate()" class="box-input">
                                         <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-semibold text-slate-700 mb-1">$M_z$ Torsion</label>
+                                    <label class="label-input">$M_z$ Torsion</label>
                                     <div class="relative">
-                                        <input type="number" id="input-mz" value="18000" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded text-xs p-1.5 pr-10 focus:ring-1 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-mz" value="18000" step="500" oninput="calculate()" class="box-input">
                                         <span class="unit-moment absolute right-2 top-1.5 text-[10px] text-slate-400">in-lb</span>
                                     </div>
                                 </div>
@@ -252,15 +266,15 @@
                     </div>
 
                     <!-- Material Properties Card -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                    <div class="card">
+                        <h2 class="card-title">
                             <i class="fa-solid fa-shield-halved mr-2 text-sky-600"></i> Weld Strength Criteria
                         </h2>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">Allowable Shear Stress ($\tau_{allow}$)</label>
+                            <label class="label-input">Allowable Shear Stress ($\tau_{allow}$)</label>
                             <div class="relative">
-                                <input type="number" id="input-tau-allow" value="21000" step="500" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-12 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                <input type="number" id="input-tau-allow" value="21000" step="500" oninput="calculate()" class="box-input">
                                 <span class="unit-stress absolute right-3 top-2 text-xs text-slate-400">psi</span>
                             </div>
                             <p class="text-[11px] text-slate-400 mt-1">Standard E70XX electrodes: $0.30 \times 70\text{ ksi} = 21.0\text{ ksi}$ allowable shear.</p>
@@ -268,24 +282,24 @@
                     </div>
 
                     <!-- Custom Point Stress Evaluation Card -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center">
+                    <div class="card">
+                        <h2 class="card-title">
                             <i class="fa-solid fa-crosshairs mr-2 text-sky-600"></i> Custom Point Stress Check
                         </h2>
 
                         <div class="space-y-3">
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Point $X_{custom}$</label>
+                                    <label class="label-input">Point $X_{custom}$</label>
                                     <div class="relative">
-                                        <input type="number" id="input-custom-x" value="3.0" step="0.5" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-custom-x" value="3.0" step="0.5" oninput="calculate()" class="box-input">
                                         <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Point $Y_{custom}$</label>
+                                    <label class="label-input">Point $Y_{custom}$</label>
                                     <div class="relative">
-                                        <input type="number" id="input-custom-y" value="4.0" step="0.5" oninput="calculate()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 pr-10 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+                                        <input type="number" id="input-custom-y" value="4.0" step="0.5" oninput="calculate()" class="box-input">
                                         <span class="unit-dist absolute right-3 top-2 text-xs text-slate-400">in</span>
                                     </div>
                                 </div>
@@ -341,13 +355,12 @@
                     </div>
 
                     <!-- Section Geometric Properties Card (Unit & Total Values) -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    <div class="card">
+                        
+                            <h3 class="card-title">
                                 <i class="fa-solid fa-calculator mr-1.5 text-sky-600"></i> Calculated Section Properties
                             </h3>
-                            <span class="text-[11px] font-mono text-slate-400">Unit vs Total Section Values</span>
-                        </div>
+                        
 
                         <div class="p-4 space-y-4">
                             <!-- Centroid & Throats Header -->
@@ -404,14 +417,12 @@
                     </div>
 
                     <!-- Section Total Loading -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    <div class="card">
+                            <h3 class="card-title">
                                 <i class="fa-solid fa-calculator mr-1.5 text-sky-600"></i> Total Applied Loading
                             </h3>
-                        </div>
 
-                        <div class="p-4 space-y-4">
+                        <div class="p-2 space-y-4">
                             <!-- Dual Unit vs Actual Table -->
                             <div class="overflow-x-auto">
                                 <table class="w-full text-center text-xs font-mono border border-slate-100 rounded-lg overflow-hidden">
@@ -450,14 +461,13 @@
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div class="lg:col-span-12 space-y-6">
                     <!-- Hotspot Stress Analysis Table -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="px-5 py-3 border-b border-slate-100 bg-slate-50">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    <div class="card">
+                            <h3 class="card-title">
                                 <i class="fa-solid fa-list-check mr-1.5 text-sky-600"></i> Hotspot Node Stress Breakdown
                             </h3>
-                        </div>
+    
 
-                        <div class="p-4">
+                        <div class="p-2">
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left text-xs font-mono rounded-xl border border-slate-100 overflow-hidden">
                                     <thead class="bg-slate-100 text-slate-600 normal-case text-[10px] tracking-wider border-b border-slate-200">
