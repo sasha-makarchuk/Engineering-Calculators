@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+# Deployment triggers: automatically deploy main changes, or run manually from GitHub.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissions required for GitHub Pages artifact publishing.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+# Deployment job: build the Vite application and publish the generated dist/ directory.
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout pulls the repository source onto the GitHub Actions runner.
+      - name: Checkout
+        uses: actions/checkout@v6
+      # Node.js provides npm and the Vite/TypeScript toolchain.
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+      # Install the packages defined in package.json.
+      - name: Install dependencies
+        run: npm install
+      # Run the TypeScript check and Vite production build.
+      - name: Build
+        run: npm run build
+      # Configure the GitHub Pages deployment environment.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      # Upload the generated dist/ folder as the Pages artifact.
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./dist
+      # Publish the uploaded artifact to GitHub Pages.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
