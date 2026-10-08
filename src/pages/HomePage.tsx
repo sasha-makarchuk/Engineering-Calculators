@@ -56,7 +56,7 @@ export function HomePage() {
         </section>
 
         <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          // Compact category navigation with available and coming-soon states.
+            { /* Compact category navigation with available and coming-soon states. */ }
           <section aria-labelledby="categories-heading" className="mb-10">
             <div className="mb-4 flex items-center justify-between">
               <h2 id="categories-heading" className="text-lg font-bold text-slate-800">Categories</h2>
