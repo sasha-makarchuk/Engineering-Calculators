@@ -38,7 +38,7 @@ jobs:
         run: npm install
       # Run the TypeScript check and Vite production build.
       - name: Build
-        run: npm run build
+        run: npm run build -- --mode github-pages
       # Configure the GitHub Pages deployment environment.
       - name: Setup Pages
         uses: actions/configure-pages@v5
