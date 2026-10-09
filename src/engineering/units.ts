@@ -51,9 +51,22 @@ export function convertBetweenSystems(value: number, quantity: UnitQuantity, fro
   return fromBase(toBase(value, quantity, fromSystem), quantity, toSystem);
 }
 
-// Round a converted display value to remove floating-point artifacts.
-export function cleanDisplayValue(value: number): number {
-    return Number(value.toPrecision(3));;
+// Format a number as a string with the requested significant figures.
+// This is for display ONLY: it does not modify the stored numeric value.
+export function formatSignificantFigures(
+    value: number,
+    significantFigures = 4
+): string {
+    if (!Number.isFinite(value)) return "";
+    if (value === 0) return "0";
+
+    if (!Number.isInteger(significantFigures) || significantFigures < 1 || significantFigures > 21) {
+        throw new RangeError("Significant figures must be between 1 and 21.");
+    }
+
+    // Convert the rounded representation back to a number, then to a string.
+    // This removes unnecessary trailing zeros without adding thousands separators.
+    return Number(value.toPrecision(significantFigures)).toString();
 }
 
 // Expose the underlying conversion table.

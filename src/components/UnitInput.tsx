@@ -1,7 +1,7 @@
-import { useId } from "react";
-import type { UnitQuantity } from "../engineering/units";
+import { useEffect, useId, useRef, useState } from "react";
+import type { UnitQuantity, UnitSystem } from "../engineering/units";
 import { useUnitSystem } from "./units/UnitContext";
-import { getUnitLabel } from "../engineering/units";
+import { formatSignificantFigures, getUnitLabel } from "../engineering/units";
 
 // Props for a reusable unit-aware numeric input.
 interface UnitInputProps {
@@ -33,6 +33,20 @@ export function UnitInput({
   const generatedId = useId();
   const inputId = `unit-input-${generatedId}`;
 
+  const [inputText, setInputText] = useState<string>(() => value === null ? "" : String(value));
+  const previousUnitSystem = useRef<UnitSystem>(unitSystem);
+
+  // Format the input text only when the unit system changes.
+  // The numeric value in the parent remains at full available precision.
+  useEffect(() => {
+      if (previousUnitSystem.current !== unitSystem) {
+          console.log("value:", value);
+          console.log("formatted value:", formatSignificantFigures(value, 4));
+          setInputText(value === null ? "" : formatSignificantFigures(value, 4));
+          previousUnitSystem.current = unitSystem;
+      }
+  }, [unitSystem, value]);
+
   // Look up the unit label shown beside the value.
   const unit = getUnitLabel(quantity, unitSystem);
   // Basic client-side validation for finite values and minimum limits.
@@ -49,10 +63,13 @@ export function UnitInput({
           id={inputId}
           type="number"
           inputMode="decimal"
-          value = { value ?? "" }
+          value = { inputText }
           onChange={(event) => {
-          const raw = event.target.value;
-            onChange(raw === "" ? null : Number(raw));
+            const raw = event.target.value;
+            setInputText(raw);
+            if (raw === "") { onChange(null); return; }
+            const parsedValue = Number(raw);
+            onChange(Number.isFinite(parsedValue) ? parsedValue : null);
           }}
           step={step}
           min={min}
