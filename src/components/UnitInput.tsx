@@ -40,8 +40,6 @@ export function UnitInput({
   // The numeric value in the parent remains at full available precision.
   useEffect(() => {
       if (previousUnitSystem.current !== unitSystem) {
-          console.log("value:", value);
-          console.log("formatted value:", formatSignificantFigures(value, 4));
           setInputText(value === null ? "" : formatSignificantFigures(value, 4));
           previousUnitSystem.current = unitSystem;
       }
