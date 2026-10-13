@@ -1,7 +1,9 @@
 // Data model for one calculator card shown on the homepage.
 export interface CalculatorCardData {
-  title: string;
-  description: string;
+    title: string;
+    description: string;
+    // Hash route of the calculator page. Calculators without an href are shown as "Coming soon".
+    href?: string;
 }
 
 // Data model for one engineering category and its calculators.
@@ -35,7 +37,7 @@ export const categories: CategoryData[] = [
     icon: "fa-solid fa-helmet-safety",
     available: true,
     calculators: [
-      { title: "Weld Group Strength Calculator", description: "Analyze weld group geometry, applied loads, hotspot stresses, and factor of safety." },
+      { title: "Weld Group Strength Calculator", description: "Analyze weld group geometry, applied loads, hotspot stresses, and factor of safety.", href: "#/weld-strength" },
     ],
   },
   {
@@ -43,10 +45,10 @@ export const categories: CategoryData[] = [
     title: "Mechanical",
     subtitle: "Machine components and mechanical design",
     icon: "fa-solid fa-gears",
-    available: false,
+    available: true,
     calculators: [
       { title: "Shaft Torque Calculator", description: "Calculate torque, power, and rotational speed relationships." },
-      { title: "Fastener Strength Calculator", description: "Check basic fastener tensile and shear loading." },
+      { title: "Fastener Strength Calculator", description: "Check basic fastener tensile and shear loading.", href: "#/bolt-strength" },
     ],
   },
   {

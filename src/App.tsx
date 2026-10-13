@@ -2,6 +2,13 @@
 import { useEffect, useState } from "react";
 import { HomePage } from "./pages/HomePage";
 import { WeldStrengthPage } from "./pages/WeldStrengthPage";
+import { BoltedJointPage } from "./pages/BoltedJointPage";
+
+// Browser tab title for each route.
+const pageTitles: Record<string, string> = {
+    "/weld-strength": "Weld Group Analysis & Stress Calculator",
+    "/bolt-strength": "Bolt Strength Calculator",
+};
 
 // Read the URL hash so GitHub Pages can use a simple client-side route.
 function getRoute(): string {
@@ -20,11 +27,9 @@ export default function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  // Update the browser tab title whenever the active route changes.
-  useEffect(() => {
-    document.title = route === "/weld-strength"
-      ? "Weld Group Analysis & Stress Calculator"
-        : "Engineering Calculators";
+    // Update the browser tab title whenever the active route changes.
+    useEffect(() => {
+        document.title = pageTitles[route] ?? "Engineering Calculators";
 
       window.scrollTo({
           top: 0,
@@ -34,11 +39,13 @@ export default function App() {
 
   }, [route]);
 
-  // Render the page associated with the current route.
-  switch (route) {
-    case "/weld-strength":
-      return <WeldStrengthPage />;
-    default:
-      return <HomePage />;
+    // Render the page associated with the current route.
+    switch (route) {
+        case "/weld-strength":
+            return <WeldStrengthPage />;
+        case "/bolt-strength":
+            return <BoltedJointPage />;
+        default:
+            return <HomePage />;
   }
 }
