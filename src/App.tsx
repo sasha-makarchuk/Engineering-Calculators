@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { HomePage } from "./pages/HomePage";
 import { WeldStrengthPage } from "./pages/WeldStrengthPage";
 import { BoltedJointPage } from "./pages/BoltedJointPage";
+import { BoltGroupPage } from "./pages/BoltGroupPage";
 
 // Browser tab title for each route.
 const pageTitles: Record<string, string> = {
     "/weld-strength": "Weld Group Analysis & Stress Calculator",
     "/bolt-strength": "Bolt Strength Calculator",
+    "/bolt-group": "Bolt Group Shear Calculator",
 };
 
 // Read the URL hash so GitHub Pages can use a simple client-side route.
@@ -45,6 +47,8 @@ export default function App() {
             return <WeldStrengthPage />;
         case "/bolt-strength":
             return <BoltedJointPage />;
+        case "/bolt-group":
+            return <BoltGroupPage />;
         default:
             return <HomePage />;
   }

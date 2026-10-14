@@ -3,7 +3,7 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { Card } from "../components/Card";
 import { JointDiagram } from "../components/JointDiagram";
-import { SiteHeader } from "../components/SiteHeader";
+import { SiteHeader, type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
 import { UnitToggle } from "../components/UnitToggle";
 import { useUnitSystem } from "../components/units/UnitContext";
@@ -570,7 +570,6 @@ function Tile({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------------------------
 
 type TabId = "properties" | "preload" | "details";
-type PageTab = "calc" | "theory";
 
 export function BoltedJointPage() {
   const { unitSystem } = useUnitSystem();
@@ -705,29 +704,10 @@ export function BoltedJointPage() {
           </>
         }
         subtitle="Preloaded joint strength, separation, thread stripping and bearing"
-        right={<UnitToggle />}
+        right = {< UnitToggle />}
+        pageTab = { pageTab }
+        setPageTab = { setPageTab }
       >
-        <div className="flex space-x-1 border-t border-slate-800 pt-2">
-          {(
-            [
-              ["calc", "fa-solid fa-calculator", "Interactive Calculator"],
-              ["theory", "fa-solid fa-book-open", "Theory & References"],
-            ] as Array<[PageTab, string, string]>
-          ).map(([id, icon, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setPageTab(id)}
-              className={
-                pageTab === id
-                  ? "flex items-center gap-2 border-b-2 border-sky-400 px-4 py-2 text-sm font-semibold text-sky-400"
-                  : "flex items-center gap-2 border-b-2 border-transparent px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200"
-              }
-            >
-              <i className={icon} aria-hidden="true" /> {label}
-            </button>
-          ))}
-        </div>
       </SiteHeader>
 
       <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-6 sm:px-6 lg:px-8">

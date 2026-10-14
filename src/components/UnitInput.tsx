@@ -75,10 +75,10 @@ export function UnitInput({
           aria-invalid={invalid}
           className={`box-input ${invalid ? "box-input-error" : ""} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
         />
-        <span className="pointer-events-none absolute right-3 top-2 text-xs text-slate-400">{unit}</span>
+      <span className ="pointer-events-none absolute right-3 top-2 text-xs text-slate-400">{unit}</span>
       </div>
       {invalid ? <p className="mt-1 text-[10px] font-medium text-red-600">Enter a value {min !== undefined ? `≥ ${min}` : "that is finite"}.</p> : null}
-      {description ? <p className="mt-1 text-[11px] text-slate-400">{description}</p> : null}
+      {description ? <p className="mt-1 text-[11px] text-slate-200">{description}</p> : null}
     </div>
   );
 }

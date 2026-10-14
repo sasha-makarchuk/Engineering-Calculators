@@ -19,18 +19,6 @@ export interface CategoryData {
 // Data-driven homepage catalog so new categories/calculators can be added without rewriting layout code.
 export const categories: CategoryData[] = [
   {
-    id: "structural",
-    title: "Structural",
-    subtitle: "Beams, sections, and connection loading",
-    icon: "fa-solid fa-building-columns",
-    available: false,
-    calculators: [
-      { title: "Beam Deflection Calculator", description: "Estimate beam deflection under common loading and support conditions." },
-      { title: "Section Properties Calculator", description: "Calculate area, centroid, and moments of inertia for common sections." },
-      { title: "Bolt Load Calculator", description: "Review bolt loads and basic connection force distribution." },
-    ],
-  },
-  {
     id: "welding",
     title: "Welding",
     subtitle: "Weld sizing and weld group analysis",
@@ -49,6 +37,19 @@ export const categories: CategoryData[] = [
     calculators: [
       { title: "Shaft Torque Calculator", description: "Calculate torque, power, and rotational speed relationships." },
       { title: "Fastener Strength Calculator", description: "Check basic fastener tensile and shear loading.", href: "#/bolt-strength" },
+      { title: "Bolt Group Shear Calculator", description: "Find the shear force on each bolt of a pattern under in-plane forces and moment, with the pattern centroid.", href: "#/bolt-group" },
+    ],
+  },
+  {
+    id: "structural",
+    title: "Structural",
+    subtitle: "Beams, sections, and connection loading",
+    icon: "fa-solid fa-building-columns",
+    available: false,
+    calculators: [
+        { title: "Beam Deflection Calculator", description: "Estimate beam deflection under common loading and support conditions." },
+        { title: "Section Properties Calculator", description: "Calculate area, centroid, and moments of inertia for common sections." },
+        { title: "Bolt Load Calculator", description: "Review bolt loads and basic connection force distribution." },
     ],
   },
   {

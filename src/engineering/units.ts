@@ -14,7 +14,9 @@ export type UnitQuantity =
     | "torque"
     | "area"
     | "stiffness"
-    | "modulus";
+    | "modulus"
+    | "kmoment"
+    | "inertia";
 
 // Each unit has a display label and a factor to the internal base unit.
 interface UnitDefinition {
@@ -69,6 +71,16 @@ const UNIT_DEFINITIONS: Record<UnitQuantity, Record<UnitSystem, UnitDefinition>>
     modulus: {
         imperial: { label: "Msi", toBase: 6894.757293168 },
         si: { label: "GPa", toBase: 1000 },
+    },
+    // Base unit N-mm (displayed as kN-m or kip-ft).
+    kmoment: {
+        imperial: { label: "kip-ft", toBase: 12 * 25.4 * 4448.2216152605 },
+        si: { label: "kN-m", toBase: 1e6 },
+    },
+    // Base unit mm⁴ (polar moment of the bolt areas, displayed as mm⁴ or in⁴).
+    inertia: {
+        imperial: { label: "in⁴", toBase: 25.4 ** 4 },
+        si: { label: "mm⁴", toBase: 1 },
     },
 };
 
