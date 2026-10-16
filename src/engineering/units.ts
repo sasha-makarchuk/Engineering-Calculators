@@ -16,13 +16,19 @@ export type UnitQuantity =
     | "stiffness"
     | "modulus"
     | "kmoment"
-    | "inertia";
+    | "inertia"
+    | "unitless";
 
 // Each unit has a display label and a factor to the internal base unit.
 interface UnitDefinition {
     label: string;
     toBase: number;
 }
+
+// Define a schema type mapping object keys to engineering unit quantities
+export type UnitSchema<T> = {
+    [K in keyof T]?: UnitQuantity;
+};
 
 // Central unit registry used by both UI and engineering calculations.
 const UNIT_DEFINITIONS: Record<UnitQuantity, Record<UnitSystem, UnitDefinition>> = {
@@ -82,6 +88,11 @@ const UNIT_DEFINITIONS: Record<UnitQuantity, Record<UnitSystem, UnitDefinition>>
         imperial: { label: "in⁴", toBase: 25.4 ** 4 },
         si: { label: "mm⁴", toBase: 1 },
     },
+    // Base unit mm⁴ (polar moment of the bolt areas, displayed as mm⁴ or in⁴).
+    unitless: {
+        imperial: { label: "", toBase: 1 },
+        si: { label: "", toBase: 1 },
+    },
 };
 
 // Return the human-readable display unit.
@@ -125,3 +136,33 @@ export function formatSignificantFigures(
 
 // Expose the underlying conversion table.
 export const UNIT_FACTORS = UNIT_DEFINITIONS;
+
+/**
+ * Converts all numeric fields in a form state object from one unit system to another.
+ * Non-numeric values and fields omitted from the schema are preserved as-is.
+ */
+export function convertFromState<T extends { unitSystem: UnitSystem }>(
+  input: T,
+  schema: UnitSchema<T>,
+  fromSystem: UnitSystem,
+  toSystem: UnitSystem
+): T {
+  // Return early if systems are identical
+  if (fromSystem === toSystem) {
+    return input;
+  }
+
+  const result = { ...input, unitSystem: toSystem };
+
+  for (const key in schema) {
+    const quantity = schema[key];
+    const value = input[key];
+
+    if (quantity && typeof value === "number" && Number.isFinite(value)) {
+      const baseVal = toBase(value, quantity, fromSystem);
+      (result[key] as any) = fromBase(baseVal, quantity, toSystem);
+    }
+  }
+
+  return result;
+}

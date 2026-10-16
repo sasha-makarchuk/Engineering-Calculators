@@ -1,5 +1,6 @@
 // Engineering-only module: all weld mathematics is kept independent from React.
-import { toBase, fromBase, type UnitSystem } from "./units";
+import { toBase, fromBase, type UnitSystem, type UnitSchema } from "./units";
+import { loadUnitSchema, type BaseLoadInput, type LoadInput } from "../components/LoadsInputCard";
 
 // Supported weld-group shapes shared by the UI and calculation engine.
 export type WeldPattern =
@@ -13,44 +14,37 @@ export type WeldPattern =
   | "t_shape";
 
 // Public calculator input model; nullable fields allow an input to be temporarily blank.
-export interface WeldInput {
+export interface WeldInput extends LoadInput {
   unitSystem: UnitSystem;
   pattern: WeldPattern;
   h: number | null;
   b: number | null;
   d: number | null;
-  Fx: number | null;
-  Fy: number | null;
-  Fz: number | null;
-  xL: number | null;
-  yL: number | null;
-  zL: number | null;
-  Mx: number | null;
-  My: number | null;
-  Mz: number | null;
   tauAllow: number | null;
   xCustom: number | null;
   yCustom: number | null;
 }
 
 // Internal validated input model expressed entirely in canonical base units.
-interface BaseWeldInput {
+interface BaseWeldInput extends BaseLoadInput{
   h: number;
   b: number;
   d: number;
-  Fx: number;
-  Fy: number;
-  Fz: number;
-  xL: number;
-  yL: number;
-  zL: number;
-  Mx: number;
-  My: number;
-  Mz: number;
   tauAllow: number;
   xCustom: number;
   yCustom: number;
 }
+
+export const weldUnitSchema: UnitSchema<WeldInput> = {
+    h: "length",
+    b: "length",
+    d: "length",
+    xCustom: "length",
+    yCustom: "length",
+    tauAllow: "stress",
+    Fx: "force",
+    ...loadUnitSchema,
+};
 
 // Named evaluation point used for stress calculations and diagram labels.
 export interface WeldPoint {

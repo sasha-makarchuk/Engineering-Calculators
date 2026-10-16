@@ -11,25 +11,37 @@
 // Sign convention: x to the right, y up, moments positive counter-clockwise. Bolt forces are given in
 // the same sense as the applied loads (the load each bolt carries from the loaded plate).
 
+import { loadUnitSchema, type BaseLoadInput, type LoadInput } from "../components/LoadsInputCard";
+import { type UnitSystem } from "./units";
+import { sizeById } from "../data/fasteners";
+
 export const MAX_BOLTS = 100;
+
+type Weighting = "tensile" | "shank";
+export type PatternKind = "rectangle" | "line" | "single";
 
 export interface GroupBolt {
   x: number; // mm
   y: number; // mm
-  area: number; // shear area, mm²
+  id: number;
+  sizeId: string;
 }
 
-export interface GroupForce {
-  fx: number; // N
-  fy: number; // N
-  x: number; // application point, mm
-  y: number; // application point, mm
+export interface BoltPattern {
+    type: PatternKind;
+    cx: number;
+    cy: number;
+    dx: number;
+    dy: number;
+    cols: number;
+    rows: number;
 }
 
-export interface BoltGroupInput {
-  bolts: GroupBolt[];
-  forces: GroupForce[];
-  moment: number; // applied free couple, N-mm (counter-clockwise positive)
+export interface BoltGroupInput extends BaseLoadInput {
+    bolts: GroupBolt[];
+    unitSystem: UnitSystem;
+    commonOnly: boolean;
+    pattern: BoltPattern;
 }
 
 export interface BoltForceResult {
@@ -56,8 +68,8 @@ export interface BoltGroupResult {
   cogY: number;
   totalArea: number; // ΣA
   polarMoment: number; // J = ΣA r², mm⁴
-  sumFx: number;
-  sumFy: number;
+  Fx: number;
+  Fy: number;
   momentAtCog: number; // N-mm
   bolts: BoltForceResult[];
   maxForce: number;
@@ -69,51 +81,50 @@ export interface BoltGroupResult {
   warnings: string[];
 }
 
+function GetBoltArea(sizeId: string): number {
+    const size = sizeById(sizeId);
+    return size ? (Math.PI * size.d * size.d) / 4 : 0;
+}
+
 export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
-  const { bolts, forces, moment } = input;
+  const { bolts, Fx = 0, Fy = 0, xL = 0, yL = 0, Mz = 0 } = input;
   if (bolts.length === 0) throw new Error("Add at least one bolt.");
   if (bolts.length > MAX_BOLTS) throw new Error(`A bolt group is limited to ${MAX_BOLTS} bolts.`);
   for (const bolt of bolts) {
-    if (![bolt.x, bolt.y, bolt.area].every(Number.isFinite) || bolt.area <= 0) {
+    if (![bolt.x, bolt.y].every(Number.isFinite)) {
       throw new Error("Every bolt needs finite coordinates and a positive shear area.");
     }
   }
 
-  const totalArea = bolts.reduce((sum, bolt) => sum + bolt.area, 0);
-  const cogX = bolts.reduce((sum, bolt) => sum + bolt.area * bolt.x, 0) / totalArea;
-  const cogY = bolts.reduce((sum, bolt) => sum + bolt.area * bolt.y, 0) / totalArea;
+  const totalArea = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId), 0);
+  const cogX = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId) * bolt.x, 0) / totalArea;
+  const cogY = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId) * bolt.y, 0) / totalArea;
   const polarMoment = bolts.reduce(
-    (sum, bolt) => sum + bolt.area * ((bolt.x - cogX) ** 2 + (bolt.y - cogY) ** 2),
+    (sum, bolt) => sum + GetBoltArea(bolt.sizeId) * ((bolt.x - cogX) ** 2 + (bolt.y - cogY) ** 2),
     0,
   );
 
   // Loads reduced to the centroid.
-  const sumFx = forces.reduce((sum, force) => sum + force.fx, 0);
-  const sumFy = forces.reduce((sum, force) => sum + force.fy, 0);
-  const momentAtCog =
-    moment +
-    forces.reduce(
-      (sum, force) => sum + (force.x - cogX) * force.fy - (force.y - cogY) * force.fx,
-      0,
-    );
+  const momentAtCog = Mz + (xL - cogX) * Fy - (yL - cogY) * Fx;
 
   const results: BoltForceResult[] = bolts.map((bolt, i) => {
     const rx = bolt.x - cogX;
     const ry = bolt.y - cogY;
-    const share = bolt.area / totalArea;
-    const fxDirect = sumFx * share;
-    const fyDirect = sumFy * share;
-    const fxMoment = polarMoment > 0 ? (-momentAtCog * bolt.area * ry) / polarMoment : 0;
-    const fyMoment = polarMoment > 0 ? (momentAtCog * bolt.area * rx) / polarMoment : 0;
+    const share = GetBoltArea(bolt.sizeId) / totalArea;
+    const fxDirect = Fx * share;
+    const fyDirect = Fy * share;
+    const fxMoment = polarMoment > 0 ? (-momentAtCog * GetBoltArea(bolt.sizeId) * ry) / polarMoment : 0;
+    const fyMoment = polarMoment > 0 ? (momentAtCog * GetBoltArea(bolt.sizeId) * rx) / polarMoment : 0;
     const fx = fxDirect + fxMoment;
     const fy = fyDirect + fyMoment;
     return {
       index: i + 1,
+      d: sizeById(bolt.sizeId)?.d ?? 0,
       x: bolt.x,
       y: bolt.y,
       rx,
       ry,
-      area: bolt.area,
+      area: GetBoltArea(bolt.sizeId),
       fxDirect,
       fyDirect,
       fxMoment,
@@ -134,11 +145,11 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
   }
 
   // Equilibrium: the bolt forces must reproduce the applied force and the moment at the centroid.
-  const residualFx = results.reduce((sum, bolt) => sum + bolt.fx, 0) - sumFx;
-  const residualFy = results.reduce((sum, bolt) => sum + bolt.fy, 0) - sumFy;
+  const residualFx = results.reduce((sum, bolt) => sum + bolt.fx, 0) - Fx;
+  const residualFy = results.reduce((sum, bolt) => sum + bolt.fy, 0) - Fy;
   const residualMoment =
     results.reduce((sum, bolt) => sum + bolt.rx * bolt.fy - bolt.ry * bolt.fx, 0) - momentAtCog;
-  const forceTolerance = 1e-6 * (Math.abs(sumFx) + Math.abs(sumFy) + 1);
+  const forceTolerance = 1e-6 * (Math.abs(Fx) + Math.abs(Fy) + 1);
   const momentTolerance = 1e-6 * (Math.abs(momentAtCog) + 1);
   const equilibriumOk =
     Math.abs(residualFx) <= forceTolerance &&
@@ -164,8 +175,8 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
     cogY,
     totalArea,
     polarMoment,
-    sumFx,
-    sumFy,
+    Fx,
+    Fy,
     momentAtCog,
     bolts: results,
     maxForce,
@@ -176,6 +187,59 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
     equilibriumOk,
     warnings,
   };
+}
+
+
+export function generatePatternBolts(
+  pattern: BoltPattern,
+  defaultSizeId: string = "M10"
+): Array<{ sizeId: string; x: number; y: number }> {
+  const bolts: Array<{ sizeId: string; x: number; y: number }> = [];
+
+  switch (pattern.type) {
+    case "rectangle": {
+      const cols = Math.max(1, pattern.cols || 1);
+      const rows = Math.max(1, pattern.rows || 1);
+      const startX = pattern.cx - ((cols - 1) * pattern.dx) / 2;
+      const startY = pattern.cy - ((rows - 1) * pattern.dy) / 2;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          bolts.push({
+            sizeId: defaultSizeId,
+            x: startX + c * pattern.dx,
+            y: startY + r * pattern.dy,
+          });
+        }
+      }
+      break;
+    }
+
+    case "line": {
+      const count = Math.max(1, pattern.cols || 1);
+      const startX = pattern.cx - ((count - 1) * pattern.dx) / 2;
+
+      for (let i = 0; i < count; i++) {
+        bolts.push({
+          sizeId: defaultSizeId,
+          x: startX + i * pattern.dx,
+          y: pattern.cy,
+        });
+      }
+      break;
+    }
+
+    case "single": {
+        bolts.push({
+          sizeId: defaultSizeId,
+          x: pattern.cx,
+          y: pattern.cy,
+        });
+      }
+      break;
+  }
+
+  return bolts;
 }
 
 // ---------------------------------------------------------------------------------------------

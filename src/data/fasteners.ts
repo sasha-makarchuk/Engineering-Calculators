@@ -1,7 +1,9 @@
 // Fastener size tables and bolt grade properties for the bolted joint calculator.
 // All lengths are stored in mm and all strengths in MPa so the engineering core stays in SI.
-import { tensileStressArea, type FastenerSystem } from "../engineering/boltedJoint";
+import { tensileStressArea } from "../engineering/boltedJoint";
+import { type SelectOption } from "../components/Dropdown";
 
+export type FastenerSystem = "metric" | "imperial";
 export type ThreadSeries = "coarse" | "fine";
 export type HoleFit = "fine" | "normal" | "coarse";
 
@@ -195,3 +197,20 @@ export function getGrades(system: FastenerSystem): BoltGrade[] {
 }
 
 export const DEFAULT_GRADE: Record<FastenerSystem, string> = { metric: "iso-10.9", imperial: "sae-5" };
+
+
+export function getFastenerOptions(
+    series: ThreadSeries,
+    commonOnly = false
+): SelectOption[] {
+    const filtered = commonOnly ? FASTENER_SIZES.filter((s) => s.common) : FASTENER_SIZES;
+
+    return filtered.map((size) => ({
+        value: size.id,
+        label: `${size.label}${size.common && !commonOnly ? " ★" : ""}`,
+    }));
+}
+
+export function sizeById(id: string): FastenerSize | undefined {
+    return FASTENER_SIZES.find((size) => size.id === id);
+}

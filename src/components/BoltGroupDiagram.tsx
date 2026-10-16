@@ -1,6 +1,7 @@
 import {
   formatSignificantFigures,
   fromBase,
+  toBase,
   getUnitLabel,
   type UnitSystem,
 } from "../engineering/units";
@@ -53,8 +54,8 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
   const { bolts, forces, cogX, cogY, momentAtCog, highlight, system } = props;
   const lengthUnit = getUnitLabel("length", system);
   const forceUnit = getUnitLabel("kforce", system);
-  const pos = (mm: number) => formatSignificantFigures(fromBase(mm, "length", system), 4);
-  const frc = (n: number) => formatSignificantFigures(fromBase(n, "kforce", system), 4);
+  const pos = (mm: number) => formatSignificantFigures(fromBase(toBase(mm, "length", system), "length", system), 4);
+  const frc = (n: number) => formatSignificantFigures(fromBase(toBase(n, "force", system), "kforce", system), 4);
 
   // Fit the bolts, centroid and force application points into the drawing area.
   const xs = [cogX, ...bolts.map((b) => b.x), ...forces.map((f) => f.x)];

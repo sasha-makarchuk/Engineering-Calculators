@@ -26,8 +26,8 @@ export function SiteHeader({ icon, title, subtitle, right, children, pageTab, se
               <i className={`${icon} text-xl`} aria-hidden="true" />
             </div>
             <div>
-              <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight text-white">
-                {title}
+              <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight text-white" >
+                { title } < span className = "rounded border border-sky-700/50 bg-sky-900/80 px-2 py-0.5 text-xs font-normal text-sky-200" > Engineering Tool </span>
               </h1>
               <p className="text-xs text-slate-400">{subtitle}</p>
             </div>
