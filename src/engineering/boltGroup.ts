@@ -28,23 +28,28 @@ export interface GroupBolt {
 }
 
 export interface BoltPattern {
-    type: PatternKind;
-    cx: number;
-    cy: number;
-    dx: number;
-    dy: number;
-    cols: number;
-    rows: number;
+  type: PatternKind;
+  cx: number;
+  cy: number;
+  dx: number;
+  dy: number;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  cols: number;
+  rows: number;
 }
 
 export interface BoltGroupInput extends BaseLoadInput {
-    bolts: GroupBolt[];
-    unitSystem: UnitSystem;
-    commonOnly: boolean;
-    pattern: BoltPattern;
+  bolts: GroupBolt[];
+  unitSystem: UnitSystem;
+  commonOnly: boolean;
+  pattern: BoltPattern;
 }
 
 export interface BoltForceResult {
+  id: number;
   index: number; // 1-based bolt number
   x: number;
   y: number;
@@ -61,6 +66,7 @@ export interface BoltForceResult {
   angleDeg: number; // direction of the resultant, degrees from +x, counter-clockwise
   ratio: number; // resultant / maximum resultant
   isMax: boolean;
+  sizeId: string;
 }
 
 export interface BoltGroupResult {
@@ -82,8 +88,8 @@ export interface BoltGroupResult {
 }
 
 function GetBoltArea(sizeId: string): number {
-    const size = sizeById(sizeId);
-    return size ? (Math.PI * size.d * size.d) / 4 : 0;
+  const size = sizeById(sizeId);
+  return size ? (Math.PI * size.d * size.d) / 4 : 0;
 }
 
 export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
@@ -96,11 +102,16 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
     }
   }
 
-  const totalArea = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId), 0);
-  const cogX = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId) * bolt.x, 0) / totalArea;
-  const cogY = bolts.reduce((sum, bolt) => sum + GetBoltArea(bolt.sizeId) * bolt.y, 0) / totalArea;
+  const boltAreas = bolts.map((bolt) => GetBoltArea(bolt.sizeId));
+  if (boltAreas.some((area) => !Number.isFinite(area) || area <= 0)) {
+    throw new Error("Every bolt must have a valid size with positive shear area.");
+  }
+
+  const totalArea = boltAreas.reduce((sum, area) => sum + area, 0);
+  const cogX = bolts.reduce((sum, bolt, i) => sum + boltAreas[i]! * bolt.x, 0) / totalArea;
+  const cogY = bolts.reduce((sum, bolt, i) => sum + boltAreas[i]! * bolt.y, 0) / totalArea;
   const polarMoment = bolts.reduce(
-    (sum, bolt) => sum + GetBoltArea(bolt.sizeId) * ((bolt.x - cogX) ** 2 + (bolt.y - cogY) ** 2),
+    (sum, bolt, i) => sum + boltAreas[i]! * ((bolt.x - cogX) ** 2 + (bolt.y - cogY) ** 2),
     0,
   );
 
@@ -108,23 +119,25 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
   const momentAtCog = Mz + (xL - cogX) * Fy - (yL - cogY) * Fx;
 
   const results: BoltForceResult[] = bolts.map((bolt, i) => {
+    const area = boltAreas[i]!;
     const rx = bolt.x - cogX;
     const ry = bolt.y - cogY;
-    const share = GetBoltArea(bolt.sizeId) / totalArea;
+    const share = area / totalArea;
     const fxDirect = Fx * share;
     const fyDirect = Fy * share;
-    const fxMoment = polarMoment > 0 ? (-momentAtCog * GetBoltArea(bolt.sizeId) * ry) / polarMoment : 0;
-    const fyMoment = polarMoment > 0 ? (momentAtCog * GetBoltArea(bolt.sizeId) * rx) / polarMoment : 0;
+    const fxMoment = polarMoment > 0 ? (-momentAtCog * area * ry) / polarMoment : 0;
+    const fyMoment = polarMoment > 0 ? (momentAtCog * area * rx) / polarMoment : 0;
     const fx = fxDirect + fxMoment;
     const fy = fyDirect + fyMoment;
     return {
+      id: bolt.id,
       index: i + 1,
       d: sizeById(bolt.sizeId)?.d ?? 0,
       x: bolt.x,
       y: bolt.y,
       rx,
       ry,
-      area: GetBoltArea(bolt.sizeId),
+      area,
       fxDirect,
       fyDirect,
       fxMoment,
@@ -135,6 +148,7 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
       angleDeg: (Math.atan2(fy, fx) * 180) / Math.PI,
       ratio: 0,
       isMax: false,
+      sizeId: bolt.sizeId,
     };
   });
 
@@ -217,144 +231,27 @@ export function generatePatternBolts(
 
     case "line": {
       const count = Math.max(1, pattern.cols || 1);
-      const startX = pattern.cx - ((count - 1) * pattern.dx) / 2;
 
       for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0.5 : i / (count - 1);
         bolts.push({
           sizeId: defaultSizeId,
-          x: startX + i * pattern.dx,
-          y: pattern.cy,
+          x: pattern.startX + t * (pattern.endX - pattern.startX),
+          y: pattern.startY + t * (pattern.endY - pattern.startY),
         });
       }
       break;
     }
 
     case "single": {
-        bolts.push({
-          sizeId: defaultSizeId,
-          x: pattern.cx,
-          y: pattern.cy,
-        });
-      }
+      bolts.push({
+        sizeId: defaultSizeId,
+        x: pattern.cx,
+        y: pattern.cy,
+      });
+    }
       break;
   }
 
   return bolts;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Pattern generators. All return bolt locations in mm, numbered from the bottom-left / start point.
-// ---------------------------------------------------------------------------------------------
-
-export interface Point {
-  x: number;
-  y: number;
-}
-
-const clean = (value: number) => Math.round(value * 1e6) / 1e6;
-
-function requireCount(value: number | null, name: string): number {
-  if (value === null || !Number.isInteger(value) || value < 1) {
-    throw new Error(`${name} must be a whole number of at least 1.`);
-  }
-  return value;
-}
-
-function requireNumber(value: number | null, name: string): number {
-  if (value === null || !Number.isFinite(value)) throw new Error(`Enter a value for ${name}.`);
-  return value;
-}
-
-function checkBoltCount(count: number): void {
-  if (count > MAX_BOLTS)
-    throw new Error(`A pattern is limited to ${MAX_BOLTS} bolts (this one has ${count}).`);
-}
-
-export interface RectangleParams {
-  cols: number | null;
-  rows: number | null;
-  dx: number | null;
-  dy: number | null;
-  cx: number | null;
-  cy: number | null;
-  perimeterOnly: boolean;
-}
-
-// Columns x rows grid centred on (cx, cy); rows are listed bottom to top, left to right.
-export function rectanglePattern(params: RectangleParams): Point[] {
-  const cols = requireCount(params.cols, "Columns");
-  const rows = requireCount(params.rows, "Rows");
-  const dx = requireNumber(params.dx, "X spacing");
-  const dy = requireNumber(params.dy, "Y spacing");
-  const cx = requireNumber(params.cx, "Center X");
-  const cy = requireNumber(params.cy, "Center Y");
-  if ((cols > 1 && dx <= 0) || (rows > 1 && dy <= 0))
-    throw new Error("Spacing must be greater than zero.");
-  checkBoltCount(cols * rows);
-  const points: Point[] = [];
-  for (let j = 0; j < rows; j += 1) {
-    for (let i = 0; i < cols; i += 1) {
-      const interior = i > 0 && i < cols - 1 && j > 0 && j < rows - 1;
-      if (params.perimeterOnly && interior) continue;
-      points.push({
-        x: clean(cx + (i - (cols - 1) / 2) * dx),
-        y: clean(cy + (j - (rows - 1) / 2) * dy),
-      });
-    }
-  }
-  return points;
-}
-
-export interface LineParams {
-  count: number | null;
-  spacing: number | null;
-  angleDeg: number | null;
-  cx: number | null;
-  cy: number | null;
-}
-
-// Evenly spaced bolts on a line through (cx, cy) at the given angle from +x.
-export function linePattern(params: LineParams): Point[] {
-  const count = requireCount(params.count, "Bolt count");
-  const spacing = requireNumber(params.spacing, "Spacing");
-  const angle = (requireNumber(params.angleDeg, "Angle") * Math.PI) / 180;
-  const cx = requireNumber(params.cx, "Center X");
-  const cy = requireNumber(params.cy, "Center Y");
-  if (count > 1 && spacing <= 0) throw new Error("Spacing must be greater than zero.");
-  checkBoltCount(count);
-  const points: Point[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const t = (i - (count - 1) / 2) * spacing;
-    points.push({ x: clean(cx + t * Math.cos(angle)), y: clean(cy + t * Math.sin(angle)) });
-  }
-  return points;
-}
-
-export interface CircleParams {
-  count: number | null;
-  diameter: number | null;
-  startAngleDeg: number | null;
-  cx: number | null;
-  cy: number | null;
-}
-
-// Evenly spaced bolts on a bolt circle, counter-clockwise from the start angle.
-export function circlePattern(params: CircleParams): Point[] {
-  const count = requireCount(params.count, "Bolt count");
-  const diameter = requireNumber(params.diameter, "Bolt circle diameter");
-  const start = requireNumber(params.startAngleDeg, "Start angle");
-  const cx = requireNumber(params.cx, "Center X");
-  const cy = requireNumber(params.cy, "Center Y");
-  if (count > 1 && diameter <= 0)
-    throw new Error("Bolt circle diameter must be greater than zero.");
-  checkBoltCount(count);
-  const points: Point[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const angle = ((start + (360 * i) / count) * Math.PI) / 180;
-    points.push({
-      x: clean(cx + (diameter / 2) * Math.cos(angle)),
-      y: clean(cy + (diameter / 2) * Math.sin(angle)),
-    });
-  }
-  return points;
 }
