@@ -14,32 +14,32 @@ const pageTitles: Record<string, string> = {
 
 // Read the URL hash so GitHub Pages can use a simple client-side route.
 function getRoute(): string {
-  const hash = window.location.hash.replace(/^#/, "");
-  return hash || "/";
+    const hash = window.location.hash.replace(/^#/, "");
+    return hash || "/";
 }
 
 // Root React component: tracks the active route and renders the corresponding page.
 export default function App() {
-  const [route, setRoute] = useState(getRoute);
+    const [route, setRoute] = useState(getRoute);
 
-  // Keep React route state synchronized with browser hash changes.
-  useEffect(() => {
-    const handleHashChange = () => setRoute(getRoute());
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
+    // Keep React route state synchronized with browser hash changes.
+    useEffect(() => {
+        const handleHashChange = () => setRoute(getRoute());
+        window.addEventListener("hashchange", handleHashChange);
+        return () => window.removeEventListener("hashchange", handleHashChange);
+    }, []);
 
     // Update the browser tab title whenever the active route changes.
     useEffect(() => {
         document.title = pageTitles[route] ?? "Engineering Calculators";
 
-      window.scrollTo({
-          top: 0,
-          left: 0,
-          behavior: "instant",
-      });
+        window.scrollTo({
+            top: 0,
+            left: 0,
+            behavior: "instant",
+        });
 
-  }, [route]);
+    }, [route]);
 
     // Render the page associated with the current route.
     switch (route) {
@@ -51,5 +51,5 @@ export default function App() {
             return <BoltGroupPage />;
         default:
             return <HomePage />;
-  }
+    }
 }

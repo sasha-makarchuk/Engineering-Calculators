@@ -1,25 +1,35 @@
 // Bolt-group calculator imports React state, shared UI components, and the engineering engine.
-import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "../components/Card";
+import { CalculatorPageShell } from "../components/CalculatorPageShell";
+import { DiagramPanel } from "../components/DiagramPanel";
 import { Equation } from "../components/Equation";
-import { SiteHeader, type PageTab } from "../components/SiteHeader";
+import { type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
-import { UnitToggle } from "../components/UnitToggle";
 import { useUnitSystem } from "../components/units/UnitContext";
+import { useCurrentInput } from "../hooks/useCurrentInput";
+import {
+  TheoryNomenclature,
+  TheoryPanel,
+  TheoryReferences,
+  TheorySection,
+} from "../components/TheorySection";
 import { LoadsInputCard, type BaseLoadInput } from "../components/LoadsInputCard";
 import {
   calculateBoltGroup,
   type BoltGroupInput,
   type GroupBolt,
+  type BoltPatternGroup,
   MAX_BOLTS,
   type PatternKind,
   type BoltPattern,
   generatePatternBolts,
 } from "../engineering/boltGroup";
-import { BoltGroupDiagram, type DiagramBolt } from "../components/BoltGroupDiagram";
-import { formatSignificantFigures, fromBase, getUnitLabel, toBase, type UnitSystem } from "../engineering/units";
+import { BoltGroupDiagram } from "../components/BoltGroupDiagram";
+import { convertFromState, formatSignificantFigures, fromBase, getUnitLabel, toBase, type UnitSchema, type UnitSystem } from "../engineering/units";
 import { FASTENER_SIZES, getFastenerOptions } from "../data/fasteners";
 import { SelectInput } from "../components/Dropdown";
+import { useCalculationResult } from "../hooks/useCalculationResult";
 
 // Dropdown display data for each supported bolt pattern.
 const patternOptions: Array<{ value: PatternKind; label: string }> = [
@@ -83,6 +93,8 @@ interface BoltRow {
   x: number | null;
   y: number | null;
 }
+
+type BoltPatternWithUnits = BoltPattern & { unitSystem: UnitSystem };
 
 const initialBolts: GroupBolt[] = [
   // Bottom Row (y = -100 mm)
@@ -158,6 +170,7 @@ const initialLoads: BaseLoadInput = {
 // Default example inputs displayed when the calculator opens.
 const initialInput: BoltGroupInput = {
   pattern: initialPattern,
+  patternGroups: [],
   commonOnly: true,
   bolts: initialBolts,
   unitSystem: "imperial",
@@ -170,85 +183,110 @@ export function BoltGroupPage() {
   const [pageTab, setPageTab] = useState<PageTab>("calc");
   const [input, setInput] = useState<BoltGroupInput>(initialInput);
   const [hover, setHover] = useState<number | null>(null);
+  const [editingPatternId, setEditingPatternId] = useState<number | null>(null);
 
-  // Convert the visible form to the currently selected unit system when necessary.
-  const currentInput =
-    input.unitSystem === unitSystem
-      ? input
-      : convertFormState(input, input.unitSystem, unitSystem);
+  const currentInput = useCurrentInput(input, setInput, unitSystem, convertFormState);
 
-  // Keep form values synchronized when the global unit system changes.
-  useEffect(() => {
-    if (input.unitSystem !== unitSystem) {
-      setInput(currentInput);
-    }
-  }, [currentInput, input.unitSystem, unitSystem]);
-
-  // Run the engineering calculation when inputs change and capture errors for display.
-  const resultState = useMemo(() => {
-    try {
-      return {
-        result: calculateBoltGroup(currentInput),
-        error: null as string | null,
-      };
-    } catch (error) {
-      return {
-        result: null,
-        error: error instanceof Error ? error.message : "Unable to calculate.",
-      };
-    }
-  }, [currentInput]);
+  const resultState = useCalculationResult(currentInput, calculateBoltGroup);
 
   const result = resultState.result;
-  const maxInitialId = Math.max(0, ...input.bolts.map((b) => b.id));
-  const nextId = useRef(maxInitialId + 1);
 
   // Generic typed updater keeps the field name and value type connected.
   const update = <K extends keyof BoltGroupInput>(field: K, value: BoltGroupInput[K]) => {
     setInput((previous) => ({ ...previous, [field]: value, unitSystem }));
   };
 
-  const updateBolt = (id: number, patch: Partial<BoltRow>) =>
-    setInput((previous) => ({
-      ...previous,
-      bolts: previous.bolts.map((row) => {
-        if (row.id === id) {
-          const updated = { ...row, ...patch };
-          return {
-            ...updated,
-            x: updated.x ?? 0,
-            y: updated.y ?? 0,
-          };
-        }
-        return row;
-      }),
-    }));
+  const updateBolt = (id: number, patch: Partial<BoltRow>) => {
+    const patternId = input.bolts.find((bolt) => bolt.id === id)?.patternId;
+    if (editingPatternId === patternId) setEditingPatternId(null);
+    setInput((previous) => {
+      const editedBolt = previous.bolts.find((bolt) => bolt.id === id);
+      const detachedPatternId = editedBolt?.patternId;
+      return {
+        ...previous,
+        // An individual edit detaches the entire generated pattern; its other bolts remain editable.
+        bolts: previous.bolts.map((row) => {
+          const detached = detachedPatternId !== undefined && row.patternId === detachedPatternId
+            ? { ...row, patternId: undefined }
+            : row;
+          if (row.id !== id) return detached;
+          const updated = { ...detached, ...patch };
+          return { ...updated, x: updated.x ?? 0, y: updated.y ?? 0 };
+        }),
+        patternGroups: detachedPatternId === undefined
+          ? previous.patternGroups
+          : previous.patternGroups.filter((pattern) => pattern.id !== detachedPatternId),
+      };
+    });
+  };
 
   const appendPatternBolts = () => {
-    // 1. Fallback fastener size from existing bolts or default
     const defaultSize = currentInput.bolts[currentInput.bolts.length - 1]?.sizeId ?? "M10x1.5";
-
-    // 2. Generate new coordinates according to current pattern settings
-    const newBolts = generatePatternBolts(currentInput.pattern, defaultSize);
-
-    // 3. Calculate how many bolts we can add before hitting MAX_BOLTS
+    const patternId = Math.max(0, ...currentInput.patternGroups.map((pattern) => pattern.id)) + 1;
+    const firstBoltId = Math.max(0, ...currentInput.bolts.map((bolt) => bolt.id)) + 1;
     const remainingSlots = MAX_BOLTS - currentInput.bolts.length;
     if (remainingSlots <= 0) return;
+    const generated = generatePatternBolts(currentInput.pattern, defaultSize).slice(0, remainingSlots);
+    const boltsToAdd = generated.map((bolt, index) => ({ ...bolt, id: firstBoltId + index, patternId }));
+    const group: BoltPatternGroup = {
+      id: patternId,
+      pattern: { ...currentInput.pattern },
+      boltIds: boltsToAdd.map((bolt) => bolt.id),
+    };
+    setInput((previous) => {
+      return {
+        ...previous,
+        bolts: [...previous.bolts, ...boltsToAdd],
+        patternGroups: [...previous.patternGroups, group],
+      };
+    });
+    setEditingPatternId(patternId);
+  };
 
-    // 4. Assign new IDs and slice to respect MAX_BOLTS
-    const boltsToAdd = newBolts.slice(0, remainingSlots).map((bolt) => ({
-      ...bolt,
-      id: nextId.current++,
+  const removeBolt = (id: number) => {
+    const patternId = input.bolts.find((bolt) => bolt.id === id)?.patternId;
+    setInput((previous) => ({
+      ...previous,
+      bolts: previous.bolts
+        .filter((bolt) => bolt.id !== id)
+        .map((bolt) => patternId !== undefined && bolt.patternId === patternId
+          ? { ...bolt, patternId: undefined }
+          : bolt),
+      patternGroups: patternId === undefined
+        ? previous.patternGroups
+        : previous.patternGroups.filter((pattern) => pattern.id !== patternId),
     }));
+    if (editingPatternId === patternId) setEditingPatternId(null);
+  };
 
-    // 5. Append new pattern bolts to existing array
-    update("bolts", [...input.bolts, ...boltsToAdd]);
+  const editPattern = (group: BoltPatternGroup) => {
+    setEditingPatternId(group.id);
+    setInput((previous) => ({
+      ...previous,
+      unitSystem,
+      pattern: { ...group.pattern },
+    }));
+  };
+
+  const removePattern = (group: BoltPatternGroup) => {
+    setInput((previous) => ({
+      ...previous,
+      bolts: previous.bolts.filter((bolt) => !group.boltIds.includes(bolt.id)),
+      patternGroups: previous.patternGroups.filter((pattern) => pattern.id !== group.id),
+    }));
+    if (editingPatternId === group.id) setEditingPatternId(null);
   };
 
 
   // Update a single key inside currentInput.pattern
   const updatePattern = <K extends keyof BoltPattern>(field: K, value: BoltPattern[K]) => {
-    setInput((previous) => ({ ...previous, unitSystem, pattern: { ...previous.pattern, [field]: value, }, }));
+    setInput((previous) => {
+      const updatedPattern = { ...previous.pattern, [field]: value };
+      if (editingPatternId === null) {
+        return { ...previous, unitSystem, pattern: updatedPattern };
+      }
+      return regeneratePatternGroup(previous, editingPatternId, updatedPattern, unitSystem);
+    });
   };
 
   const sizeOptions = useMemo(
@@ -256,83 +294,98 @@ export function BoltGroupPage() {
     [unitSystem, currentInput.commonOnly]
   );
 
-  const diagramBolts: DiagramBolt[] = result?.bolts?.map((bolt) => ({
-    ...bolt,
-    d: FASTENER_SIZES.find((s) => s.id === bolt.sizeId)?.d ?? 10,
-  })) ?? [];
-
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-800 antialiased">
-      {/* Calculator header contains the shared unit toggle and calculator tabs. */}
-      <SiteHeader
-        icon="fa-solid fa-layer-group"
-        title={<> Bolt Group Shear Calculator</>}
-        subtitle="In-plane forces and moment on a bolt pattern, elastic method"
-        right={< UnitToggle />}
-        pageTab={pageTab}
-        setPageTab={setPageTab}
-      >
-      </SiteHeader>
-
-      <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-6 sm:px-6 lg:px-8">
-        {pageTab === "calc" ? (
-          <>
-            {/* Main responsive layout: inputs on the left, visualization/results on the right. */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left column: input cards for geometry, forces, and moments. */}
-              <div className="space-y-6 lg:col-span-5">
-                {/* Geometry inputs: pattern selection and dimensions. */}
-                <Card title="Bolt Coordinates" icon="fa-solid fa-shapes">
-                  <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-1" >
-                    <div className="space-y-4" >
-                      <div className="grid grid-cols-2 gap-3 items-end" >
-                        <SelectInput
-                          label="Select bolt pattern"
-                          value={currentInput.pattern.type}
-                          options={patternOptions}
-                          onChange={(value) => updatePattern("type", value)}
-                        />
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={appendPatternBolts}
-                            disabled={input.bolts.length >= MAX_BOLTS}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            + Add bolts
-                          </button>
-                          <span className="text-[11px] text-slate-400">
-                            {input.bolts.length} of {MAX_BOLTS} bolts
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3" >
-                        {PATTERN_CONFIGS.find((p) => p.value === currentInput.pattern.type)?.fields.map((field) => {
-                          const val = currentInput.pattern[field.key as keyof BoltPattern];
-
-                          return (
-                            <UnitInput
-                              key={field.key}
-                              label={field.label}
-                              quantity={field.quantity}
-                              value={(val as number) ?? 0}
-                              onChange={(v) => updatePattern(field.key as keyof BoltPattern, v ?? 0)}
-                              step={unitSystem === "imperial" ? field.step : field.stepSI}
-                            />
-                          );
-                        })}
+    <CalculatorPageShell
+      icon="fa-solid fa-layer-group"
+      title={<> Bolt Group Shear Calculator</>}
+      subtitle="In-plane forces and moment on a bolt pattern, elastic method"
+      pageTab={pageTab}
+      setPageTab={setPageTab}
+    >
+      {pageTab === "calc" ? (
+        <>
+          {/* Main responsive layout: inputs on the left, visualization/results on the right. */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left column: input cards for geometry, forces, and moments. */}
+            <div className="space-y-6 lg:col-span-5">
+              {/* Geometry inputs: pattern selection and dimensions. */}
+              <Card title="Bolt Coordinates" icon="fa-solid fa-shapes">
+                <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-1" >
+                  <div className="space-y-4" >
+                    <div className="grid grid-cols-2 gap-3 items-end" >
+                      <SelectInput
+                        label="Select bolt pattern"
+                        value={currentInput.pattern.type}
+                        options={patternOptions}
+                        onChange={(value) => updatePattern("type", value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={appendPatternBolts}
+                          disabled={input.bolts.length >= MAX_BOLTS}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          + Add pattern
+                        </button>
+                        <span className="text-[11px] text-slate-400">
+                          {input.bolts.length} of {MAX_BOLTS} bolts
+                        </span>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-3" >
+                      {PATTERN_CONFIGS.find((p) => p.value === currentInput.pattern.type)?.fields.map((field) => {
+                        const val = currentInput.pattern[field.key as keyof BoltPattern];
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[360px] overflow-hidden rounded-lg border border-slate-200 text-left text-xs">
+                        return (
+                          <UnitInput
+                            key={field.key}
+                            label={field.label}
+                            quantity={field.quantity}
+                            value={(val as number) ?? 0}
+                            onChange={(v) => updatePattern(field.key as keyof BoltPattern, v ?? 0)}
+                            step={unitSystem === "imperial" ? field.step : field.stepSI}
+                          />
+                        );
+                      })}
+                    </div>
+                    {input.patternGroups.length > 0 ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50">
+                        <h3 className="text-xs font-semibold text-slate-700 p-2">Added patterns</h3>
+                        {input.patternGroups.map((group, index) => (
+                          <div
+                            key={group.id}
+                            className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-xs ${group.id === editingPatternId ? "bg-violet-50" : "bg-white"
+                              }`}
+                          >                            <span className="text-slate-700">
+                              Pattern {index + 1}: {PATTERN_CONFIGS.find((item) => item.value === group.pattern.type)?.label ?? group.pattern.type}
+                              <span className="ml-1 text-slate-400">(Bolts: {group.boltIds.join(",")})</span>
+                            </span>
+                            <div className="flex shrink-0 gap-2">
+                              {editingPatternId === group.id ? (
+                                <button type="button" onClick={() => setEditingPatternId(null)} className="shrink-0 font-semibold hover:text-sky-950">Done</button>
+                              ) : editingPatternId === null ? (
+                                <>
+                                  <button type="button" onClick={() => editPattern(group)} className="font-semibold text-sky-700 hover:text-sky-900">Edit</button>
+                                  <button type="button" onClick={() => removePattern(group)} className="font-semibold text-red-600 hover:text-red-800">Remove</button>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="overflow-hidden rounded-lg">
+                    <div className="max-h-[390px] overflow-auto">
+                      <table className="w-full min-w-[360px] border-collapse rounded-lg text-left text-xs">
                         <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
                           <tr>
-                            <th className="px-2 py-2">#</th>
-                            <th className="px-2 py-2">Size</th>
-                            <th className="px-2 py-2 text-right">x</th>
-                            <th className="px-2 py-2 text-right">y</th>
-                            <th className="px-2 py-2" />
+                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">#</th>
+                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">Size</th>
+                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">x</th>
+                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">y</th>
+                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -343,19 +396,19 @@ export function BoltGroupPage() {
                               onMouseLeave={() => setHover(null)}
                               className={hover === i + 1 ? "bg-violet-50" : ""}
                             >
-                              <td className="px-2 py-1.5 font-mono text-slate-500">
+                              <td className="px-1 py-1.5 font-mono text-slate-500">
                                 {i + 1}
                               </td>
-                              <td className="px-2 py-1.5">
+                              <td className="px-1 py-1.5">
                                 <SelectInput
                                   aria-label={`Bolt ${i + 1} size`}
                                   value={row.sizeId}
                                   options={sizeOptions}
                                   onChange={(value) => updateBolt(row.id, { sizeId: value })}
-                                  className="min-w-[7.5rem] px-2 py-1 font-sans text-xs"
+                                  className="min-w-[7.5rem] font-sans text-xs"
                                 />
                               </td>
-                              <td>
+                              <td className="px-1 py-1.5">
                                 <UnitInput
                                   label=""
                                   quantity="length"
@@ -364,7 +417,7 @@ export function BoltGroupPage() {
                                   step={unitSystem === "imperial" ? 0.1 : 1}
                                 />
                               </td>
-                              <td>
+                              <td className="px-1 py-1.5">
                                 <UnitInput
                                   label=""
                                   quantity="length"
@@ -373,11 +426,11 @@ export function BoltGroupPage() {
                                   step={unitSystem === "imperial" ? 0.1 : 1}
                                 />
                               </td>
-                              <td className="px-2 py-1.5 text-right">
+                              <td className="px-1 py-1.5 text-right">
                                 <button
                                   type="button"
                                   aria-label={`Delete bolt ${i + 1}`}
-                                  onClick={() => update("bolts", input.bolts.filter((b) => b.id !== row.id))}
+                                  onClick={() => removeBolt(row.id)}
                                   className="rounded px-2 py-1 text-red-600 hover:bg-red-50"
                                 >
                                   <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -389,116 +442,78 @@ export function BoltGroupPage() {
                       </table>
                     </div>
                   </div>
-                </Card>
+                </div>
+              </Card>
 
-                {/* Force magnitudes and load application coordinates. */}
-                <LoadsInputCard
-                  values={currentInput}
-                  onChange={(field, value) => update(field as keyof BoltGroupInput, value ?? 0)}
-                  enableZ={false}
-                />
-              </div>
-
-              {/* Right column: visualization panel and result tiles. */}
-              <div className="space-y-6 lg:col-span-7">
-                {/* Dark visualization panel containing the bolt-group diagram. */}
-                {result ? (
-                  <>
-                    {/* Dark visualization panel containing the bolt-group diagram. */}
-                    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
-                      <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="h-3 w-3 rounded-full bg-red-500" />
-                          <span className="h-3 w-3 rounded-full bg-yellow-500" />
-                          <span className="h-3 w-3 rounded-full bg-green-500" />
-                          <h3 className="ml-2 text-xs font-mono uppercase tracking-wider text-slate-300">
-                            2D Bolt-Force Vector & Group Diagram
-                          </h3>
-                        </div>
-                        <div className="hidden items-center space-x-3 text-[11px] font-mono text-slate-400 sm:flex">
-                          <span>
-                            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-sky-400" />{" "}
-                            Bolt force
-                          </span>
-                          <span>
-                            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />{" "}
-                            Bolts
-                          </span>
-                          <span>
-                            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-red-500" />{" "}
-                            Applied force
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex justify-center bg-slate-950 p-4">
-                        <BoltGroupDiagram
-                          bolts={diagramBolts}
-                          forces={[
-                            {
-                              fx: currentInput.Fx ?? 0,
-                              fy: currentInput.Fy ?? 0,
-                              x: currentInput.xL ?? 0,
-                              y: currentInput.yL ?? 0,
-                            },
-                          ]}
-                          cogX={result.cogX}
-                          cogY={result.cogY}
-                          momentAtCog={result.momentAtCog}
-                          highlight={hover}
-                          system={unitSystem}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Primary Result Metrics Grid */}
-                    <Card title="Pattern, Loads and Bolt Forces" icon="fa-solid fa-bullseye">
-                      < div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        <Metric
-                          label="Pattern COG (area-weighted)"
-                          value={formatSignificantFigures(fromBase(result.cogX, "length", unitSystem), 4) + ", " + formatSignificantFigures(fromBase(result.cogY, "length", unitSystem), 4) + " " + getUnitLabel("length", unitSystem)}
-                        />
-                        <Metric
-                          label="Total force at COG"
-                          value={formatSignificantFigures(fromBase(result.Fx, "force", unitSystem), 4) + ", " + formatSignificantFigures(fromBase(result.Fy, "force", unitSystem), 4) + " " + getUnitLabel("force", unitSystem)}
-                          sub="ΣFx, ΣFy"
-                        />
-                        <Metric
-                          label="Moment at COG"
-                          value={formatSignificantFigures(fromBase(result.momentAtCog, "moment", unitSystem), 4) + " " + getUnitLabel("moment", unitSystem)}
-                          sub={result.momentAtCog > 0 ? "counter-clockwise" : result.momentAtCog < 0 ? "clockwise" : undefined}
-                        />
-                        <Metric
-                          label="Maximum bolt force"
-                          value={formatSignificantFigures(fromBase(result.maxForce, "force", unitSystem), 4) + " " + getUnitLabel("force", unitSystem)}
-                          sub={result.maxBolts.length > 0 ? "bolt " + result.maxBolts.join(", ") : "no load"}
-                        />
-                      </div>
-                    </Card>
-
-                    {/* Detailed stress breakdown for each hotspot/evaluation point. */}
-                    <ResultsTable result={result} system={unitSystem} />
-
-                  </>
-                ) : (
-                  <div>
-                    <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-                      {resultState.error}
-                    </div>
-                    <div className="flex min-h-[380px] w-full max-w-2xl items-center justify-center rounded border border-red-900 bg-slate-900 p-6 text-center text-sm text-red-300">
-                      Enter valid inputs to display the diagram.
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Force magnitudes and load application coordinates. */}
+              <LoadsInputCard
+                values={currentInput}
+                onChange={(field, value) => update(field as keyof BoltGroupInput, value ?? 0)}
+                enableZ={false}
+              />
             </div>
 
+            {/* Right column: visualization panel and result tiles. */}
+            <div className="space-y-6 lg:col-span-7">
+              {result ? (
+                <>
+                  {/* Dark visualization panel containing the bolt-group diagram. */}
+                  <DiagramPanel
+                    title="2D Bolt-Force Vector & Group Diagram"
+                    legend={[
+                      { label: "Bolt force", colorClassName: "bg-sky-700", swatch: "line" },
+                      {
+                        label: "Bolt resultant: low → high",
+                        colorClassName: "bg-gradient-to-r from-sky-300 to-orange-500",
+                        swatch: "gradient",
+                      },
+                      { label: "Applied force", colorClassName: "bg-red-600", swatch: "line" },
+                      { label: "CG / moment", colorClassName: "bg-violet-600" },
+                    ]}
+                  >
+                    <BoltGroupDiagram
+                      bolts={result.bolts}
+                      forces={[
+                        {
+                          fx: currentInput.Fx ?? 0,
+                          fy: currentInput.Fy ?? 0,
+                          x: currentInput.xL ?? 0,
+                          y: currentInput.yL ?? 0,
+                        },
+                      ]}
+                      cogX={result.cogX}
+                      cogY={result.cogY}
+                      momentAtCog={result.momentAtCog}
+                      highlight={hover}
+                      system={unitSystem}
+                    />
+                  </DiagramPanel>
 
-          </>
-        ) : (
-          <Theory />
-        )}
-      </main>
-    </div >
+                  <BoltGroupSummary result={result} system={unitSystem} />
+
+                  {/* Detailed stress breakdown for each hotspot/evaluation point. */}
+                  <ResultsTable result={result} system={unitSystem} />
+
+                </>
+              ) : (
+                <div>
+                  <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                    {resultState.error}
+                  </div>
+                  <div className="flex min-h-[380px] w-full max-w-2xl items-center justify-center rounded border border-red-900 bg-slate-900 p-6 text-center text-sm text-red-300">
+                    Enter valid inputs to display the diagram.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+
+        </>
+      ) : (
+        <Theory />
+      )}
+    </CalculatorPageShell>
   );
 }
 
@@ -513,48 +528,130 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   );
 }
 
-// Convert all editable form values between Imperial and SI while preserving the physical problem.
-function convertFormState(
+// Summary properties for the calculated bolt group, matching the weld page's section summary structure.
+function BoltGroupSummary({
+  result,
+  system,
+}: {
+  result: NonNullable<ReturnType<typeof calculateBoltGroup>>;
+  system: UnitSystem;
+}) {
+  const lengthUnit = getUnitLabel("length", system);
+  const forceUnit = getUnitLabel("force", system);
+  const momentUnit = getUnitLabel("moment", system);
+
+  return (
+    <Card title="Pattern, Loads and Bolt Forces" icon="fa-solid fa-bullseye">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric
+          label="Pattern COG (area-weighted)"
+          value={`${formatSignificantFigures(result.cogX, 4)}, ${formatSignificantFigures(result.cogY, 4)} ${lengthUnit}`}
+        />
+        <Metric
+          label="Total force at COG"
+          value={`${formatSignificantFigures(result.Fx, 4)}, ${formatSignificantFigures(result.Fy, 4)} ${forceUnit}`}
+          sub="ΣFx, ΣFy"
+        />
+        <Metric
+          label="Moment at COG"
+          value={`${formatSignificantFigures(result.momentAtCog, 4)} ${momentUnit}`}
+          sub={result.momentAtCog > 0 ? "counter-clockwise" : result.momentAtCog < 0 ? "clockwise" : undefined}
+        />
+        <Metric
+          label="Maximum bolt force"
+          value={`${formatSignificantFigures(result.maxForce, 4)} ${forceUnit}`}
+          sub={result.maxBolts.length > 0 ? `bolt ${result.maxBolts.join(", ")}` : "no load"}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function regeneratePatternGroup(
   input: BoltGroupInput,
-  fromSystem: "imperial" | "si",
-  toSystem: "imperial" | "si"
+  patternId: number,
+  pattern: BoltPattern,
+  unitSystem: UnitSystem,
 ): BoltGroupInput {
-  const convert = <T extends number | null>(
-    value: T,
-    quantity: "length" | "force" | "moment" | "stress"
-  ): T => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return value;
-    return fromBase(toBase(value, quantity, fromSystem), quantity, toSystem) as T;
-  };
+  const group = input.patternGroups.find((item) => item.id === patternId);
+  if (!group) return { ...input, unitSystem, pattern };
+
+  const previousBolts = group.boltIds
+    .map((id) => input.bolts.find((bolt) => bolt.id === id))
+    .filter((bolt): bolt is GroupBolt => bolt !== undefined);
+  const freeSlots = MAX_BOLTS - (input.bolts.length - previousBolts.length);
+  const defaultSizeId = previousBolts.at(-1)?.sizeId ?? "M10x1.5";
+  const generated = generatePatternBolts(pattern, defaultSizeId).slice(0, freeSlots);
+  let nextBoltId = Math.max(0, ...input.bolts.map((bolt) => bolt.id)) + 1;
+
+  const nextBolts = generated.map((bolt, index) => ({
+    ...bolt,
+    id: previousBolts[index]?.id ?? nextBoltId++,
+    sizeId: previousBolts[index]?.sizeId ?? defaultSizeId,
+    patternId,
+  }));
+  const nextById = new Map(nextBolts.map((bolt) => [bolt.id, bolt]));
+  const previousIds = new Set(group.boltIds);
+  const nextIds = new Set(nextBolts.map((bolt) => bolt.id));
+  const bolts = input.bolts.flatMap((bolt) => {
+    if (!previousIds.has(bolt.id)) return [bolt];
+    const replacement = nextById.get(bolt.id);
+    return replacement ? [replacement] : [];
+  });
+
+  for (const bolt of nextBolts) {
+    if (!previousIds.has(bolt.id)) bolts.push(bolt);
+  }
 
   return {
     ...input,
-    unitSystem: toSystem,
-    Fx: convert(input.Fx, "force"),
-    Fy: convert(input.Fy, "force"),
-    Fz: convert(input.Fz, "force"),
-    xL: convert(input.xL, "length"),
-    yL: convert(input.yL, "length"),
-    zL: convert(input.zL, "length"),
-    Mx: convert(input.Mx, "moment"),
-    My: convert(input.My, "moment"),
-    Mz: convert(input.Mz, "moment"),
-    bolts: input.bolts.map((bolt) => ({
-      ...bolt,
-      x: convert(bolt.x, "length"),
-      y: convert(bolt.y, "length"),
-    })),
-    pattern: {
-      ...input.pattern,
-      cx: convert(input.pattern.cx, "length"),
-      cy: convert(input.pattern.cy, "length"),
-      dx: convert(input.pattern.dx, "length"),
-      dy: convert(input.pattern.dy, "length"),
-      startX: convert(input.pattern.startX, "length"),
-      startY: convert(input.pattern.startY, "length"),
-      endX: convert(input.pattern.endX, "length"),
-      endY: convert(input.pattern.endY, "length"),
-    },
+    unitSystem,
+    pattern,
+    bolts,
+    patternGroups: input.patternGroups.map((item) =>
+      item.id === patternId ? { ...item, pattern, boltIds: nextBolts.map((bolt) => bolt.id) } : item,
+    ),
+  };
+}
+
+// Convert all editable form values between Imperial and SI while preserving the physical problem.
+function convertFormState(
+  input: BoltGroupInput,
+  fromSystem: UnitSystem,
+  toSystem: UnitSystem
+): BoltGroupInput {
+  const convertedInput = convertFromState(input, boltGroupUnitSchema, fromSystem, toSystem);
+  const convertedPatternWithUnits = convertFromState(
+    { ...input.pattern, unitSystem: fromSystem },
+    boltPatternUnitSchema,
+    fromSystem,
+    toSystem,
+  );
+  const { unitSystem: _patternUnitSystem, ...pattern } = convertedPatternWithUnits;
+
+  return {
+    ...convertedInput,
+    bolts: input.bolts.map((bolt) => {
+      const convertedBoltWithUnits = convertFromState(
+        { ...bolt, unitSystem: fromSystem },
+        boltCoordinatesUnitSchema,
+        fromSystem,
+        toSystem,
+      );
+      const { unitSystem: _boltUnitSystem, ...convertedBolt } = convertedBoltWithUnits;
+      return convertedBolt;
+    }),
+    pattern,
+    patternGroups: input.patternGroups.map((group) => {
+      const convertedPatternWithUnits = convertFromState(
+        { ...group.pattern, unitSystem: fromSystem },
+        boltPatternUnitSchema,
+        fromSystem,
+        toSystem,
+      );
+      const { unitSystem: _groupPatternUnitSystem, ...groupPattern } = convertedPatternWithUnits;
+      return { ...group, pattern: groupPattern };
+    }),
   };
 }
 
@@ -604,19 +701,19 @@ const theoryEquation = (expression: string) => (
 );
 
 const theoryNomenclature: Array<[string, string]> = [
-  ["x_i, y_i", "Coordinates of bolt i in the common origin"],
-  ["A_i", "Shank area used to weight bolt i"],
-  ["A", "Total area, sum of A_i"],
-  ["x̄, ȳ", "Area-weighted centroid of the pattern"],
-  ["r_xi, r_yi", "Position of bolt i relative to the centroid"],
-  ["J", "Polar moment of the bolt areas about the centroid"],
-  ["F_xk, F_yk", "Applied force components at point (x_k, y_k)"],
-  ["M", "Applied free couple, counter-clockwise positive"],
-  ["ΣF_x, ΣF_y", "Total force reduced to the centroid"],
-  ["M_c", "Total moment about the centroid"],
-  ["F'_i", "Direct (primary) shear on bolt i"],
-  ["F''_i", "Moment-induced (secondary) shear on bolt i"],
-  ["R_i", "Resultant force on bolt i"],
+  [String.raw`x_i, y_i`, "Coordinates of bolt i in the common origin"],
+  [String.raw`A_i`, "Shank area used to weight bolt i"],
+  [String.raw`A`, "Total area, sum of A_i"],
+  [String.raw`\bar{x}, \bar{y}`, "Area-weighted centroid of the pattern"],
+  [String.raw`r_{xi}, r_{yi}`, "Position of bolt i relative to the centroid"],
+  [String.raw`J`, "Polar moment of the bolt areas about the centroid"],
+  [String.raw`F_{xk}, F_{yk}`, "Applied force components at point (x_k, y_k)"],
+  [String.raw`M`, "Applied free couple, counter-clockwise positive"],
+  [String.raw`\Sigma F_x, \Sigma F_y`, "Total force reduced to the centroid"],
+  [String.raw`M_c`, "Total moment about the centroid"],
+  [String.raw`F'_i`, "Direct (primary) shear on bolt i"],
+  [String.raw`F''_i`, "Moment-induced (secondary) shear on bolt i"],
+  [String.raw`R_i`, "Resultant force on bolt i"],
 ];
 
 const theoryReferences: Array<[string, string]> = [
@@ -631,37 +728,6 @@ const theoryReferences: Array<[string, string]> = [
   ["ISO 724 and ISO 898-1", "Metric thread dimensions and tensile stress area."],
   ["ASME B1.1", "Unified inch threads and tensile stress area."],
 ];
-
-function TheoryBlock({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: ReactNode;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-      {description ? <p className="text-xs leading-relaxed text-slate-600">{description}</p> : null}
-      {children}
-    </div>
-  );
-}
-
-function TheoryPanel({ children, label }: { children: ReactNode; label?: string }) {
-  return (
-    <div className="space-y-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-      {label ? (
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          {label}
-        </div>
-      ) : null}
-      {children}
-    </div>
-  );
-}
 
 function Theory() {
   return (
@@ -680,7 +746,7 @@ function Theory() {
           </div>
           <hr className="border-slate-200" />
 
-          <TheoryBlock
+          <TheorySection
             title="1. Bolt shear area"
             description="The current calculation weights each bolt using its major-diameter shank area. The tensile stress area formula is included for reference but is not used by this calculator."
           >
@@ -695,9 +761,9 @@ function Theory() {
             <TheoryPanel label="Shank area used in the calculation">
               {theoryEquation(String.raw`A_d = \frac{\pi d^2}{4}`)}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock
+          <TheorySection
             title="2. Centroid of the pattern"
             description="The centroid is the area-weighted average of the bolt coordinates. For identical bolts it is the geometric center."
           >
@@ -708,9 +774,9 @@ function Theory() {
               {theoryEquation(String.raw`r_{xi} = x_i - \bar{x}, \qquad r_{yi} = y_i - \bar{y}`)}
               {theoryEquation(String.raw`J = \sum A_i\left(r_{xi}^2 + r_{yi}^2\right)`)}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock
+          <TheorySection
             title="3. Loads reduced to the centroid"
             description="Each applied force is moved to the centroid, adding its moment about the centroid. The applied free couple is unchanged."
           >
@@ -720,17 +786,17 @@ function Theory() {
                 String.raw`M_c = M + \sum_k\Big[(x_k - \bar{x})\,F_{yk} - (y_k - \bar{y})\,F_{xk}\Big]`,
               )}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock title="4. Direct (primary) shear" description="The total force is shared in proportion to each bolt&apos;s shank area.">
+          <TheorySection title="4. Direct (primary) shear" description="The total force is shared in proportion to each bolt&apos;s shank area.">
             <TheoryPanel>
               {theoryEquation(
                 String.raw`F'_{xi} = \Sigma F_x\,\frac{A_i}{A}, \qquad F'_{yi} = \Sigma F_y\,\frac{A_i}{A}`,
               )}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock
+          <TheorySection
             title="5. Moment-induced (secondary) shear"
             description="The moment is resisted by forces perpendicular to the radius from the centroid, proportional to bolt area and distance."
           >
@@ -745,18 +811,18 @@ function Theory() {
             <p className="text-xs leading-relaxed text-slate-600">
               For identical bolts this becomes the standard torsion formula F&apos;&apos; = M_c·r_i / Σr².
             </p>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock title="6. Total force on each bolt">
+          <TheorySection title="6. Total force on each bolt">
             <TheoryPanel>
               {theoryEquation(String.raw`F_{xi} = F'_{xi} + F''_{xi}, \qquad F_{yi} = F'_{yi} + F''_{yi}`)}
               {theoryEquation(
                 String.raw`R_i = \sqrt{F_{xi}^2 + F_{yi}^2}, \qquad \theta_i = \operatorname{atan2}(F_{yi},\,F_{xi})`,
               )}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock
+          <TheorySection
             title="7. Equilibrium check"
             description="The calculator verifies that the bolt forces reproduce the loads at the centroid."
           >
@@ -764,9 +830,9 @@ function Theory() {
               {theoryEquation(String.raw`\sum F_{xi} = \Sigma F_x, \qquad \sum F_{yi} = \Sigma F_y`)}
               {theoryEquation(String.raw`\sum\left(r_{xi}\,F_{yi} - r_{yi}\,F_{xi}\right) = M_c`)}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock
+          <TheorySection
             title="8. Pattern generators"
             description="Generated bolts remain individually editable in the bolt table."
           >
@@ -784,20 +850,13 @@ function Theory() {
             <TheoryPanel label="Single bolt at (c_x, c_y)">
               {theoryEquation(String.raw`x = c_x, \qquad y = c_y`)}
             </TheoryPanel>
-          </TheoryBlock>
+          </TheorySection>
 
-          <TheoryBlock title="Nomenclature">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2">
-              {theoryNomenclature.map(([symbol, text]) => (
-                <div key={symbol} className="flex gap-3">
-                  <span className="w-24 shrink-0 font-mono font-semibold text-slate-700">{symbol}</span>
-                  <span className="text-slate-600">{text}</span>
-                </div>
-              ))}
-            </div>
-          </TheoryBlock>
+          <TheorySection title="Nomenclature">
+            <TheoryNomenclature entries={theoryNomenclature} />
+          </TheorySection>
 
-          <TheoryBlock title="Sign conventions and assumptions">
+          <TheorySection title="Sign conventions and assumptions">
             <ul className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-slate-600">
               <li>x points right, y points up, and positive moments are counter-clockwise.</li>
               <li>
@@ -813,21 +872,43 @@ function Theory() {
               <li>This page reports forces only; it does not check bolt shear, bearing, or slip capacity.</li>
               <li>A single bolt, or bolts all at the centroid, cannot resist a moment.</li>
             </ul>
-          </TheoryBlock>
+          </TheorySection>
 
-          <div className="space-y-3 border-t border-slate-200 pt-4">
-            <h3 className="text-sm font-bold text-slate-800">References</h3>
-            <ul className="space-y-2 text-xs text-slate-600">
-              {theoryReferences.map(([title, text]) => (
-                <li key={title} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                  <div className="font-semibold text-slate-800">{title}</div>
-                  <div className="mt-0.5 text-slate-500">{text}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <TheorySection title="References">
+            <TheoryReferences entries={theoryReferences} />
+          </TheorySection>
         </div>
       </Card>
     </div>
   );
 }
+
+type BoltCoordinatesWithUnits = GroupBolt & { unitSystem: UnitSystem };
+
+const boltGroupUnitSchema: UnitSchema<BoltGroupInput> = {
+  Fx: "force",
+  Fy: "force",
+  Fz: "force",
+  xL: "length",
+  yL: "length",
+  zL: "length",
+  Mx: "moment",
+  My: "moment",
+  Mz: "moment",
+};
+
+const boltCoordinatesUnitSchema: UnitSchema<BoltCoordinatesWithUnits> = {
+  x: "length",
+  y: "length",
+};
+
+const boltPatternUnitSchema: UnitSchema<BoltPatternWithUnits> = {
+  cx: "length",
+  cy: "length",
+  dx: "length",
+  dy: "length",
+  startX: "length",
+  startY: "length",
+  endX: "length",
+  endY: "length",
+};

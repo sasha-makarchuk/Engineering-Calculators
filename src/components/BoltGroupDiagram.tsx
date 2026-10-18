@@ -6,16 +6,7 @@ import {
   type UnitSystem,
 } from "../engineering/units";
 
-export interface DiagramBolt {
-  index: number;
-  x: number; // mm
-  y: number; // mm
-  d: number; // nominal diameter, mm
-  fx: number; // N
-  fy: number; // N
-  ratio: number; // resultant / maximum resultant
-  isMax: boolean;
-}
+import { type BoltForceResult } from "../engineering/boltGroup";
 
 export interface DiagramForce {
   fx: number; // N
@@ -25,7 +16,7 @@ export interface DiagramForce {
 }
 
 export interface BoltGroupDiagramProps {
-  bolts: DiagramBolt[];
+  bolts: BoltForceResult[];
   forces: DiagramForce[];
   cogX: number;
   cogY: number;
@@ -76,6 +67,7 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
   const maxBolt = Math.max(...bolts.map((b) => Math.hypot(b.fx, b.fy)), 0);
   const maxApplied = Math.max(...forces.map((f) => Math.hypot(f.fx, f.fy)), 0);
   const labelSize = bolts.length > 99 ? 6 : bolts.length > 9 ? 7.5 : 8.5;
+  const minimumBoltLabelSpacing = Math.max(16, labelSize * 2.2);
 
   const cx = px(cogX);
   const cy = py(cogY);
@@ -128,14 +120,14 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
       </defs>
 
       {/* Axis indicator */}
-      <g stroke="#475569" strokeWidth={1.5}>
+      <g stroke="#cbd5e1" strokeWidth={1.5}>
         <line x1={24} y1={VH - 20} x2={56} y2={VH - 20} markerEnd="url(#bg-arrow)" />
         <line x1={24} y1={VH - 20} x2={24} y2={VH - 52} markerEnd="url(#bg-arrow)" />
       </g>
-      <text x={60} y={VH - 16} fontSize={11} fill="#475569">
+      <text x={60} y={VH - 16} fontSize={11} fill="#cbd5e1">
         x
       </text>
-      <text x={20} y={VH - 58} fontSize={11} fill="#475569">
+      <text x={20} y={VH - 58} fontSize={11} fill="#cbd5e1">
         y
       </text>
 
@@ -150,6 +142,9 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
         const hy = py(force.y);
         const tx = hx - ux * length;
         const ty = hy - uy * length;
+        const forceLabel = `${frc(magnitude)} ${forceUnit}`;
+        const labelX = (tx + hx) / 2 + 8;
+        const labelY = (ty + hy) / 2 - 6;
         return (
           <g key={`force-${i}`}>
             <line x1={cx} y1={cy} x2={hx} y2={hy} stroke="#cbd5e1" strokeDasharray="5 4" />
@@ -163,16 +158,13 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
               markerEnd="url(#bg-applied)"
             />
             <text
-              x={tx + (hx - tx) / 2 + 8}
-              y={ty + (hy - ty) / 2 - 6}
+              x={labelX}
+              y={labelY + 3}
               fontSize={10.5}
-              fill="#b91c1c"
+              fill="#fecaca"
               fontWeight={700}
             >
-              {frc(magnitude)} {forceUnit}
-            </text>
-            <text x={hx + 8} y={hy + 14} fontSize={9.5} fill="#64748b">
-              ({pos(force.x)}, {pos(force.y)})
+              {forceLabel}
             </text>
           </g>
         );
@@ -188,6 +180,14 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
         const ux = magnitude > 0 ? bolt.fx / magnitude : 0;
         const uy = magnitude > 0 ? -bolt.fy / magnitude : 0;
         const active = highlight === bolt.index;
+        const showIndex =
+          active ||
+          (bolts.length <= 30 &&
+            bolts.every(
+              (other) =>
+                other.index === bolt.index ||
+                Math.hypot(px(other.x) - x, py(other.y) - y) >= minimumBoltLabelSpacing,
+            ));
         return (
           <g key={bolt.index}>
             {arrow > 3 ? (
@@ -209,32 +209,37 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
               stroke={active ? "#7c3aed" : bolt.isMax ? "#c2410c" : "#0f172a"}
               strokeWidth={active ? 3 : bolt.isMax ? 2 : 1}
             />
-            <text
-              x={x}
-              y={y + labelSize / 3}
-              fontSize={labelSize}
-              textAnchor="middle"
-              fill="#0f172a"
-              fontWeight={700}
-            >
-              {bolt.index}
-            </text>
+            {showIndex ? (
+              <text
+                x={x}
+                y={y + labelSize / 3}
+                fontSize={labelSize}
+                textAnchor="middle"
+                fill="#0f172a"
+                fontWeight={700}
+              >
+                {bolt.index}
+              </text>
+            ) : null}
           </g>
         );
       })}
 
-      {/* Centroid and moment at the centroid */}
-      <g stroke="#0f172a" strokeWidth={1.5}>
-        <line x1={cx - 10} y1={cy} x2={cx + 10} y2={cy} />
-        <line x1={cx} y1={cy - 10} x2={cx} y2={cy + 10} />
+      {/* Distinct purple centroid marker, separated from bolt circles and arrows. */}
+      <g aria-label="Bolt-group centroid">
+        <circle cx={cx} cy={cy} r={11} fill="#a855f7" fillOpacity={0.22} />
+        <path
+          d={`M ${cx} ${cy - 7} L ${cx + 7} ${cy} L ${cx} ${cy + 7} L ${cx - 7} ${cy} Z`}
+          fill="#7c3aed"
+          stroke="#f3e8ff"
+          strokeWidth={1.5}
+        />
+        <circle cx={cx} cy={cy} r={1.5} fill="#ffffff" />
+        <title>{`Centroid (${pos(cogX)}, ${pos(cogY)}) ${lengthUnit}`}</title>
       </g>
-      <circle cx={cx} cy={cy} r={5} fill="none" stroke="#0f172a" strokeWidth={1.5} />
       {momentAtCog !== 0 ? (
         <path d={arc} fill="none" stroke="#7c3aed" strokeWidth={2} markerEnd="url(#bg-moment)" />
       ) : null}
-      <text x={cx + 12} y={cy + 28} fontSize={10.5} fill="#0f172a" fontWeight={700}>
-        COG ({pos(cogX)}, {pos(cogY)}) {lengthUnit}
-      </text>
     </svg>
   );
 }

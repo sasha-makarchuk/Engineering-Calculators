@@ -42,9 +42,8 @@ export function SelectInput<T extends string = string>({
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value as T)}
-          className={`box-input font-sans pr-8 ${
-            disabled ? "cursor-not-allowed opacity-60" : ""
-          }`}
+          className={`box-input font-sans !pr-1 ${disabled ? "cursor-not-allowed opacity-60" : ""
+            }`}
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>

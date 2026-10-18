@@ -1,17 +1,21 @@
 // Weld calculator imports React state/effects, reusable UI components, and the engineering engine.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Card } from "../components/Card";
+import { CalculatorPageShell } from "../components/CalculatorPageShell";
+import { DiagramPanel } from "../components/DiagramPanel";
 import { LoadsInputCard } from "../components/LoadsInputCard";
 import { Equation } from "../components/Equation";
-import { SiteHeader, type PageTab } from "../components/SiteHeader";
+import { type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
+import { TheoryNomenclature, TheoryPanel, TheoryReferences, TheorySection } from "../components/TheorySection";
 import { SelectInput } from "../components/Dropdown";
-import { UnitToggle } from "../components/UnitToggle";
 import { WeldDiagram } from "../components/WeldDiagram";
 import { StatusBanner } from "../components/StatusBanner";
 import { useUnitSystem } from "../components/units/UnitContext";
+import { useCalculationResult } from "../hooks/useCalculationResult";
+import { useCurrentInput } from "../hooks/useCurrentInput";
 import { displayResultValue, calculateWeldGroup, formatResultNumber, type WeldInput, type WeldPattern, weldUnitSchema } from "../engineering/weldGroup";
-import { fromBase, getUnitLabel, toBase, convertFromState } from "../engineering/units";
+import { fromBase, getUnitLabel, toBase, convertFromState, type UnitSystem } from "../engineering/units";
 
 // Dropdown display data for each supported weld pattern.
 const patternOptions: Array<{ value: WeldPattern; label: string }> = [
@@ -46,34 +50,22 @@ const initialInput: WeldInput = {
   yCustom: 4.0,
 };
 
+function convertWeldForm(input: WeldInput, fromSystem: UnitSystem, toSystem: UnitSystem,): WeldInput {
+  return convertFromState(input, weldUnitSchema, fromSystem, toSystem);
+}
+
 // Main weld calculator page: manages state, tabs, unit synchronization, and results.
 export function WeldStrengthPage() {
   const { unitSystem } = useUnitSystem();
   const [pageTab, setPageTab] = useState<PageTab>("calc");
   const [input, setInput] = useState<WeldInput>(initialInput);
 
-  // Convert the visible form to the currently selected unit system when necessary.
-  const currentInput = input.unitSystem === unitSystem ? input : convertFromState(input, weldUnitSchema, input.unitSystem, unitSystem);
+  const currentInput = useCurrentInput(input, setInput, unitSystem, convertWeldForm);
 
-  // Keep form values synchronized when the global unit system changes.
-  useEffect(() => {
-    if (input.unitSystem !== unitSystem) {
-      setInput(currentInput);
-    }
-  }, [currentInput, input.unitSystem, unitSystem]);
+  const resultState = useCalculationResult(currentInput, calculateWeldGroup);
 
-    // Run the engineering calculation when inputs change and capture errors for display.
-    //COMMON CODE??
-  const resultState = useMemo(() => {
-    try {
-      return { result: calculateWeldGroup(currentInput), error: null as string | null };
-    } catch (error) {
-      return { result: null, error: error instanceof Error ? error.message : "Unable to calculate." };
-    }
-  }, [currentInput]);
-
-    // Generic typed updater keeps the field name and value type connected.
-    //COMMON CODE??
+  // Generic typed updater keeps the field name and value type connected.
+  //COMMON CODE??
   const update = <K extends keyof WeldInput>(field: K, value: WeldInput[K]) => {
     setInput((previous) => ({ ...previous, [field]: value, unitSystem }));
   };
@@ -82,123 +74,111 @@ export function WeldStrengthPage() {
   const lengthUnit = getUnitLabel("length", unitSystem);
 
   return (
-      <div className= "flex min-h-screen flex-col bg-slate-100 text-slate-800 antialiased" >
-      {/* Calculator header contains the shared unit toggle and calculator tabs. */ }
-      <SiteHeader
-        icon="fa-solid fa-layer-group"
-        title = {<> Weld Group Statics & amp; Stress</>}
-        subtitle="Analysis & Hotspot Efficiency Calculator"
-        right = {< UnitToggle/>}
-        pageTab = { pageTab }
-        setPageTab = { setPageTab }
-      >
-      </SiteHeader>
-
-      <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-6 sm:px-6 lg:px-8">
-        {pageTab === "calc" ? (
-          <>
-            {/* Main responsive layout: inputs on the left, visualization/results on the right. */ }
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              <div className="space-y-6 lg:col-span-5">
-                {/* Geometry inputs: pattern selection and dimensions. */}
-                <Card title="Weld Pattern Geometry" icon="fa-solid fa-shapes">
+    <CalculatorPageShell
+      icon="fa-solid fa-layer-group"
+      title={<> Weld Group Statics & amp; Stress</>}
+      subtitle="Analysis & Hotspot Efficiency Calculator"
+      pageTab={pageTab}
+      setPageTab={setPageTab}
+    >
+      {pageTab === "calc" ? (
+        <>
+          {/* Main responsive layout: inputs on the left, visualization/results on the right. */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div className="space-y-6 lg:col-span-5">
+              {/* Geometry inputs: pattern selection and dimensions. */}
+              <Card title="Weld Pattern Geometry" icon="fa-solid fa-shapes">
                 <div className="space-y-4" >
-                    <SelectInput<WeldPattern>
-                      label="Pattern Configuration"
-                      value={currentInput.pattern}
-                      options={patternOptions}
-                      onChange={(value) => update("pattern", value)}
-                    />
-                    <UnitInput label="Weld Leg Size (h)" quantity="length" value={currentInput.h} onChange={(value) => update("h", value)} min={0.000001} step={unitSystem === "imperial" ? 0.01 : 0.1} />
-                    <UnitInput label="Width (b / D)" quantity="length" value={currentInput.b} onChange={(value) => update("b", value)} min={0.000001} step={unitSystem === "imperial" ? 0.1 : 1} />
-                    <UnitInput label="Height (d)" quantity="length" value={currentInput.d} onChange={(value) => update("d", value)} min={0.000001} step={unitSystem === "imperial" ? 0.1 : 1} disabled={currentInput.pattern === "circle"} />
-                    {currentInput.pattern === "circle" ? <p className="-mt-2 text-[10px] text-slate-400">Circular patterns use b/D as the diameter.</p> : null}
-                  </div>
-                </Card>
-
-                {/* Force magnitudes and load application coordinates. */}
-                <LoadsInputCard
-                  values={currentInput}
-                  onChange = { update }
-                />
-
-                {/* Allowable shear stress used for the safety-factor check. */}
-                <Card title="Weld Strength Criteria" icon="fa-solid fa-shield-halved">
-                  <UnitInput
-                    label="Allowable Shear Stress (τallow)"
-                    quantity="stress"
-                    value={currentInput.tauAllow}
-                    onChange={(value) => update("tauAllow", value)}
-                    min={0.000001}
-                    step={unitSystem === "imperial" ? 500 : 1}
-                    description="Standard E70XX electrodes: 0.30 × 70 ksi = 21.0 ksi allowable shear."
+                  <SelectInput<WeldPattern>
+                    label="Pattern Configuration"
+                    value={currentInput.pattern}
+                    options={patternOptions}
+                    onChange={(value) => update("pattern", value)}
                   />
-                </Card>
-
-                {/* Optional custom point for an additional stress evaluation. */}
-                <Card title="Custom Point Stress Check" icon="fa-solid fa-crosshairs">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <UnitInput label="Point Xcustom" quantity="length" value={currentInput.xCustom} onChange={(value) => update("xCustom", value)} step={unitSystem === "imperial" ? 0.5 : 1} />
-                    <UnitInput label="Point Ycustom" quantity="length" value={currentInput.yCustom} onChange={(value) => update("yCustom", value)} step={unitSystem === "imperial" ? 0.5 : 1} />
-                  </div>
-                </Card>
-              </div>
-
-              <div className="space-y-6 lg:col-span-7">
-                {/* Dark visualization panel containing the weld diagram. */}
-                <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="h-3 w-3 rounded-full bg-red-500" /><span className="h-3 w-3 rounded-full bg-yellow-500" /><span className="h-3 w-3 rounded-full bg-green-500" />
-                      <h3 className="ml-2 text-xs font-mono uppercase tracking-wider text-slate-300">2D Weld Vector &amp; Node Visualizer</h3>
-                    </div>
-                    <div className="hidden items-center space-x-3 text-[11px] font-mono text-slate-400 sm:flex">
-                      <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-sky-400" />Weld</span>
-                      <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />Nodes</span>
-                      <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-red-500" />CG</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-center bg-slate-950 p-4">
-                    {result ? (
-                      <WeldDiagram
-                        result={result}
-                        xLoadBase={toBase(currentInput.xL ?? 0, "length", unitSystem)}
-                        yLoadBase={toBase(currentInput.yL ?? 0, "length", unitSystem)}
-                        xCustomBase={toBase(currentInput.xCustom ?? 0, "length", unitSystem)}
-                        yCustomBase={toBase(currentInput.yCustom ?? 0, "length", unitSystem)}
-                      />
-                    ) : (
-                      <div className="flex min-h-[380px] w-full max-w-2xl items-center justify-center rounded border border-red-900 bg-slate-900 p-6 text-center text-sm text-red-300">Enter valid inputs to display the diagram.</div>
-                    )}
-                  </div>
+                  <UnitInput label="Weld Leg Size (h)" quantity="length" value={currentInput.h} onChange={(value) => update("h", value)} min={0.000001} step={unitSystem === "imperial" ? 0.01 : 0.1} />
+                  <UnitInput label="Width (b / D)" quantity="length" value={currentInput.b} onChange={(value) => update("b", value)} min={0.000001} step={unitSystem === "imperial" ? 0.1 : 1} />
+                  <UnitInput label="Height (d)" quantity="length" value={currentInput.d} onChange={(value) => update("d", value)} min={0.000001} step={unitSystem === "imperial" ? 0.1 : 1} disabled={currentInput.pattern === "circle"} />
+                  {currentInput.pattern === "circle" ? <p className="-mt-2 text-[10px] text-slate-400">Circular patterns use b/D as the diameter.</p> : null}
                 </div>
+              </Card>
 
-                {/* Display calculated result panels when the engineering calculation succeeds. */}
-                {result ? (
-                  <>
-                    <StatusBanner
-                      FOS={result.factorOfSafety}
-                      safe={result.safe}
-                      maxValue={result.maxStress}
-                      maxQuantity="stress"
-                      hotspotLabel="Max Hotspot Stress (τmax)"
-                      system={unitSystem}
-                    />
-                    <SectionProperties result={result} system={unitSystem} />
-                    <LoadSummary result={result} system={unitSystem} />
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">{resultState.error}</div>
-                )}
-              </div>
+              {/* Force magnitudes and load application coordinates. */}
+              <LoadsInputCard
+                values={currentInput}
+                onChange={update}
+              />
+
+              {/* Allowable shear stress used for the safety-factor check. */}
+              <Card title="Weld Strength Criteria" icon="fa-solid fa-shield-halved">
+                <UnitInput
+                  label="Allowable Shear Stress (τallow)"
+                  quantity="stress"
+                  value={currentInput.tauAllow}
+                  onChange={(value) => update("tauAllow", value)}
+                  min={0.000001}
+                  step={unitSystem === "imperial" ? 500 : 1}
+                  description="Standard E70XX electrodes: 0.30 × 70 ksi = 21.0 ksi allowable shear."
+                />
+              </Card>
+
+              {/* Optional custom point for an additional stress evaluation. */}
+              <Card title="Custom Point Stress Check" icon="fa-solid fa-crosshairs">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <UnitInput label="Point Xcustom" quantity="length" value={currentInput.xCustom} onChange={(value) => update("xCustom", value)} step={unitSystem === "imperial" ? 0.5 : 1} />
+                  <UnitInput label="Point Ycustom" quantity="length" value={currentInput.yCustom} onChange={(value) => update("yCustom", value)} step={unitSystem === "imperial" ? 0.5 : 1} />
+                </div>
+              </Card>
             </div>
 
-            {/* Detailed stress breakdown for each hotspot/evaluation point. */}
-            {result ? <HotspotTable result={result} system={unitSystem} /> : null}
-          </>
-        ) : <Theory />}
-      </main>
-    </div>
+            <div className="space-y-6 lg:col-span-7">
+              <DiagramPanel
+                title="2D Weld Vector & Node Visualizer"
+                legend={[
+                  { label: "Weld", colorClassName: "bg-sky-400", swatch: "line" },
+                  { label: "Nodes", colorClassName: "bg-amber-400" },
+                  { label: "CG", colorClassName: "bg-red-500" },
+                ]}
+              >
+                {result ? (
+                  <WeldDiagram
+                    result={result}
+                    xLoadBase={toBase(currentInput.xL ?? 0, "length", unitSystem)}
+                    yLoadBase={toBase(currentInput.yL ?? 0, "length", unitSystem)}
+                    xCustomBase={toBase(currentInput.xCustom ?? 0, "length", unitSystem)}
+                    yCustomBase={toBase(currentInput.yCustom ?? 0, "length", unitSystem)}
+                  />
+                ) : (
+                  <div className="flex min-h-[380px] w-full max-w-2xl items-center justify-center rounded border border-red-900 bg-slate-900 p-6 text-center text-sm text-red-300">
+                    Enter valid inputs to display the diagram.
+                  </div>
+                )}
+              </DiagramPanel>
+
+              {/* Display calculated result panels when the engineering calculation succeeds. */}
+              {result ? (
+                <>
+                  <StatusBanner
+                    FOS={result.factorOfSafety}
+                    safe={result.safe}
+                    maxValue={result.maxStress}
+                    maxQuantity="stress"
+                    hotspotLabel="Max Hotspot Stress (τmax)"
+                    system={unitSystem}
+                  />
+                  <SectionProperties result={result} system={unitSystem} />
+                  <LoadSummary result={result} system={unitSystem} />
+                </>
+              ) : (
+                <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">{resultState.error}</div>
+              )}
+            </div>
+          </div>
+
+          {/* Detailed stress breakdown for each hotspot/evaluation point. */}
+          {result ? <HotspotTable result={result} system={unitSystem} /> : null}
+        </>
+      ) : <Theory />}
+    </CalculatorPageShell>
   );
 }
 
@@ -283,7 +263,7 @@ function HotspotTable({ result, system }: { result: NonNullable<ReturnType<typeo
               <th rowSpan={2} className="border-b border-slate-200 px-3 py-2.5 text-center">Status</th>
             </tr>
             <tr className="border-b border-slate-200">
-              {['τx','τy','τz','τx','τy','τz','τx','τy','τz'].map((header, index) => <th key={`${header}-${index}`} className="border-r border-slate-200 px-2 py-2 text-center">{header}</th>)}
+              {['τx', 'τy', 'τz', 'τx', 'τy', 'τz', 'τx', 'τy', 'τz'].map((header, index) => <th key={`${header}-${index}`} className="border-r border-slate-200 px-2 py-2 text-center">{header}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
@@ -309,6 +289,23 @@ function HotspotTable({ result, system }: { result: NonNullable<ReturnType<typeo
   );
 }
 
+const weldTheoryNomenclature: Array<[string, string]> = [
+  [String.raw`h`, "Fillet-weld leg size"],
+  [String.raw`t`, "Effective weld throat thickness"],
+  [String.raw`L_{total}`, "Total weld length"],
+  [String.raw`\bar{x}, \bar{y}`, "Weld-group centroid coordinates"],
+  [String.raw`I_x, I_y`, "Second moments of area about the centroid"],
+  [String.raw`J`, "Polar moment of area, I_x + I_y"],
+  [String.raw`\tau_{allow}`, "Allowable shear stress"],
+  [String.raw`\tau_{resultant}`, "Resultant shear stress"],
+];
+
+const weldTheoryReferences: Array<[string, string]> = [
+  ["AISC Steel Construction Manual", "Weld-group analysis methods and design guidance."],
+  ["AWS D1.1 Structural Welding Code", "Requirements and design provisions for structural welds."],
+  ["Shigley’s Mechanical Engineering Design", "Elastic weld-group analysis and line-pattern properties."],
+];
+
 // Theory/reference tab containing the calculation methodology and equations.
 function Theory() {
   return (
@@ -317,19 +314,35 @@ function Theory() {
         <div className="space-y-6">
           <div><h2 className="mb-2 text-lg font-bold text-slate-900">Weld Group Analysis Methodology</h2><p className="text-sm leading-relaxed text-slate-600">This calculator implements the Elastic Method (Unit Line Method) for weld group statics. Welds are treated as line segments with effective throat thickness t = 0.7071 · h. Review the applicable design standard and engineering judgment before using results for final design.</p></div>
           <hr className="border-slate-200" />
-          <TheoryBlock title="1. Effective Throat & Area" description="For a standard equal-leg fillet weld with leg size h:"><Equation expression={String.raw`t = h \cdot \sin(45^\circ) \approx 0.7071 \cdot h, \quad A_w = t \cdot L_{total}`} /></TheoryBlock>
-          <TheoryBlock title="2. Centroid of Weld Group Line Pattern" description="The centroid (x̄, ȳ) of the multi-segment weld pattern is determined using the first moment of area method:"><Equation expression={String.raw`\bar{x} = \frac{\sum L_i \cdot x_i}{\sum L_i}, \quad \bar{y} = \frac{\sum L_i \cdot y_i}{\sum L_i}`} /></TheoryBlock>
-          <TheoryBlock title="3. Unit vs Total Moments of Inertia" description="Unit line inertias (Ixw, Iyw, Jw) are calculated per unit throat, then converted to actual section inertias:"><Equation expression={String.raw`I_x = t \cdot I_{xw}, \quad I_y = t \cdot I_{yw}, \quad J = t \cdot J_w = I_x + I_y`} /></TheoryBlock>
-          <TheoryBlock title="4. Induced Moments & Total Vector Stresses" description="Loads applied at location (xL, yL, zL) induce additional moments about the weld group centroid:"><Equation expression={String.raw`\mathbf{M}_{total} = \mathbf{M}_{applied} + \mathbf{r} \times \mathbf{F}`} /><Equation expression={String.raw`\tau_{x,k} = \frac{F_x}{A_w} - \frac{M_{z,total}(y_k - \bar{y})}{J}, \quad \tau_{y,k} = \frac{F_y}{A_w} + \frac{M_{z,total}(x_k - \bar{x})}{J}`} /><Equation expression={String.raw`\tau_{z,k} = \frac{F_z}{A_w} + \frac{M_{x,total}(y_k - \bar{y})}{I_x} - \frac{M_{y,total}(x_k - \bar{x})}{I_y}`} /><Equation expression={String.raw`\tau_{resultant,k} = \sqrt{\tau_{x,k}^2 + \tau_{y,k}^2 + \tau_{z,k}^2}`} /></TheoryBlock>
-          <TheoryBlock title="5. Safety Factor Evaluation"><Equation expression={String.raw`\text{Factor of Safety } (n) = \frac{\tau_{allow}}{\max(\tau_{resultant})}`} /></TheoryBlock>
-          <div className="border-t border-slate-200 pt-4 text-xs leading-relaxed text-slate-500"><strong className="text-slate-700">References:</strong> The original project notes the AISC Steel Construction Manual, AWS D1.1 Structural Welding Code, and Shigley weld-group tables as sources for the method and line-pattern geometry.</div>
+          <TheorySection title="1. Effective Throat & Area" description="For a standard equal-leg fillet weld with leg size h:">
+            <TheoryPanel><Equation expression={String.raw`t = h \cdot \sin(45^\circ) \approx 0.7071 \cdot h, \quad A_w = t \cdot L_{total}`} /></TheoryPanel>
+          </TheorySection>
+          <TheorySection title="2. Centroid of Weld Group Line Pattern" description="The centroid (x̄, ȳ) of the multi-segment weld pattern is determined using the first moment of area method:">
+            <TheoryPanel><Equation expression={String.raw`\bar{x} = \frac{\sum L_i \cdot x_i}{\sum L_i}, \quad \bar{y} = \frac{\sum L_i \cdot y_i}{\sum L_i}`} /></TheoryPanel>
+          </TheorySection>
+          <TheorySection title="3. Unit vs Total Moments of Inertia" description="Unit line inertias (Ixw, Iyw, Jw) are calculated per unit throat, then converted to actual section inertias:">
+            <TheoryPanel><Equation expression={String.raw`I_x = t \cdot I_{xw}, \quad I_y = t \cdot I_{yw}, \quad J = t \cdot J_w = I_x + I_y`} /></TheoryPanel>
+          </TheorySection>
+          <TheorySection title="4. Induced Moments & Total Vector Stresses" description="Loads applied at location (xL, yL, zL) induce additional moments about the weld group centroid:">
+            <TheoryPanel>
+              <Equation expression={String.raw`\mathbf{M}_{total} = \mathbf{M}_{applied} + \mathbf{r} \times \mathbf{F}`} />
+              <Equation expression={String.raw`\tau_{x,k} = \frac{F_x}{A_w} - \frac{M_{z,total}(y_k - \bar{y})}{J}, \quad \tau_{y,k} = \frac{F_y}{A_w} + \frac{M_{z,total}(x_k - \bar{x})}{J}`} />
+              <Equation expression={String.raw`\tau_{z,k} = \frac{F_z}{A_w} + \frac{M_{x,total}(y_k - \bar{y})}{I_x} - \frac{M_{y,total}(x_k - \bar{x})}{I_y}`} />
+              <Equation expression={String.raw`\tau_{resultant,k} = \sqrt{\tau_{x,k}^2 + \tau_{y,k}^2 + \tau_{z,k}^2}`} />
+            </TheoryPanel>
+          </TheorySection>
+          <TheorySection title="5. Safety Factor Evaluation">
+            <TheoryPanel><Equation expression={String.raw`\text{Factor of Safety } (n) = \frac{\tau_{allow}}{\max(\tau_{resultant})}`} /></TheoryPanel>
+          </TheorySection>
+          <TheorySection title="Nomenclature">
+            <TheoryNomenclature entries={weldTheoryNomenclature} />
+          </TheorySection>
+          <TheorySection title="References">
+            <TheoryReferences entries={weldTheoryReferences} />
+          </TheorySection>
         </div>
       </Card>
     </div>
   );
 }
 
-// Reusable wrapper for one theory section.
-function TheoryBlock({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return <div className="space-y-2"><h3 className="text-sm font-bold text-slate-800">{title}</h3>{description ? <p className="text-xs text-slate-600">{description}</p> : null}<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-mono text-center">{children}</div></div>;
-}

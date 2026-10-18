@@ -12,7 +12,7 @@
 // the same sense as the applied loads (the load each bolt carries from the loaded plate).
 
 import { loadUnitSchema, type BaseLoadInput, type LoadInput } from "../components/LoadsInputCard";
-import { type UnitSystem } from "./units";
+import { fromBase, toBase, type UnitSystem } from "./units";
 import { sizeById } from "../data/fasteners";
 
 export const MAX_BOLTS = 100;
@@ -25,6 +25,7 @@ export interface GroupBolt {
   y: number; // mm
   id: number;
   sizeId: string;
+  patternId?: number;
 }
 
 export interface BoltPattern {
@@ -41,16 +42,24 @@ export interface BoltPattern {
   rows: number;
 }
 
+export interface BoltPatternGroup {
+  id: number;
+  pattern: BoltPattern;
+  boltIds: number[];
+}
+
 export interface BoltGroupInput extends BaseLoadInput {
   bolts: GroupBolt[];
+  patternGroups: BoltPatternGroup[];
   unitSystem: UnitSystem;
   commonOnly: boolean;
   pattern: BoltPattern;
 }
 
 export interface BoltForceResult {
-  id: number;
   index: number; // 1-based bolt number
+  id: number;
+  d: number;
   x: number;
   y: number;
   rx: number; // position relative to the centroid
@@ -87,9 +96,14 @@ export interface BoltGroupResult {
   warnings: string[];
 }
 
-function GetBoltArea(sizeId: string): number {
+function GetBoltArea(sizeId: string, unitSystem: UnitSystem): number {
   const size = sizeById(sizeId);
-  return size ? (Math.PI * size.d * size.d) / 4 : 0;
+  if (!size) return 0;
+
+  const fastenerUnitSystem: UnitSystem = size.system === "metric" ? "si" : "imperial";
+  const diameter = fromBase(toBase(size.d, "length", fastenerUnitSystem), "length", unitSystem);
+
+  return (Math.PI * diameter ** 2) / 4;
 }
 
 export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
@@ -102,7 +116,7 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
     }
   }
 
-  const boltAreas = bolts.map((bolt) => GetBoltArea(bolt.sizeId));
+  const boltAreas = bolts.map((bolt) => GetBoltArea(bolt.sizeId, input.unitSystem));
   if (boltAreas.some((area) => !Number.isFinite(area) || area <= 0)) {
     throw new Error("Every bolt must have a valid size with positive shear area.");
   }
@@ -130,8 +144,8 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
     const fx = fxDirect + fxMoment;
     const fy = fyDirect + fyMoment;
     return {
-      id: bolt.id,
       index: i + 1,
+      id: bolt.id,
       d: sizeById(bolt.sizeId)?.d ?? 0,
       x: bolt.x,
       y: bolt.y,
@@ -231,13 +245,14 @@ export function generatePatternBolts(
 
     case "line": {
       const count = Math.max(1, pattern.cols || 1);
+      const dx = pattern.dx ?? 0;
+      const dy = pattern.dy ?? 0;
 
       for (let i = 0; i < count; i++) {
-        const t = count === 1 ? 0.5 : i / (count - 1);
         bolts.push({
           sizeId: defaultSizeId,
-          x: pattern.startX + t * (pattern.endX - pattern.startX),
-          y: pattern.startY + t * (pattern.endY - pattern.startY),
+          x: pattern.startX + i * dx,
+          y: pattern.startY + i * dy,
         });
       }
       break;

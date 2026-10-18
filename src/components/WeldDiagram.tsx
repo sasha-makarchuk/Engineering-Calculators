@@ -51,27 +51,6 @@ export function WeldDiagram({
       // Keep drawing coordinates in CSS pixels while rendering at device-pixel resolution.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Paint the dark background and engineering-style grid.
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.lineWidth = 1;
-
-      for (let x = 0; x < width; x += 20) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-
-      for (let y = 0; y < height; y += 20) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
       // Use the engineering result as the source of truth for the geometry shown.
       const geometry = result.geometry;
 
@@ -282,7 +261,7 @@ export function WeldDiagram({
     >
       <canvas
         ref={canvasRef}
-        className="w-full h-full rounded border border-slate-800/80 bg-slate-900 cursor-crosshair"
+        className="w-full h-full cursor-crosshair"
       />
     </div>
   );
