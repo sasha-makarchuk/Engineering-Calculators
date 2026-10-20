@@ -73,7 +73,7 @@ select {
 
 /* Shared numeric/select input appearance. */
 .box-input {
-  @apply w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-2 pr-5 text-xs text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20;
+  @apply w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-2 pr-6 text-xs text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/20;
   font-family: "Fira Code", monospace;
 }
 

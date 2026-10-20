@@ -52,7 +52,6 @@ export interface BoltGroupInput extends BaseLoadInput {
   bolts: GroupBolt[];
   patternGroups: BoltPatternGroup[];
   unitSystem: UnitSystem;
-  commonOnly: boolean;
   pattern: BoltPattern;
 }
 
@@ -107,7 +106,14 @@ function GetBoltArea(sizeId: string, unitSystem: UnitSystem): number {
 }
 
 export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
-  const { bolts, Fx = 0, Fy = 0, xL = 0, yL = 0, Mz = 0 } = input;
+  // Convert displayed kip/kN inputs to the force units paired with the page's
+  // coordinates and moments (lbf for inches, N for millimeters).
+  const forceScale = 1000;
+  const momentScale = input.unitSystem === "imperial" ? 1000 : 1_000_000;
+  const { bolts, xL = 0, yL = 0, Mz = 0 } = input;
+  const Fx = input.Fx * forceScale;
+  const Fy = input.Fy * forceScale;
+  const appliedMoment = Mz * momentScale;
   if (bolts.length === 0) throw new Error("Add at least one bolt.");
   if (bolts.length > MAX_BOLTS) throw new Error(`A bolt group is limited to ${MAX_BOLTS} bolts.`);
   for (const bolt of bolts) {
@@ -130,7 +136,7 @@ export function calculateBoltGroup(input: BoltGroupInput): BoltGroupResult {
   );
 
   // Loads reduced to the centroid.
-  const momentAtCog = Mz + (xL - cogX) * Fy - (yL - cogY) * Fx;
+  const momentAtCog = appliedMoment + (xL - cogX) * Fy - (yL - cogY) * Fx;
 
   const results: BoltForceResult[] = bolts.map((bolt, i) => {
     const area = boltAreas[i]!;

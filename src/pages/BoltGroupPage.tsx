@@ -4,6 +4,7 @@ import { Card } from "../components/Card";
 import { CalculatorPageShell } from "../components/CalculatorPageShell";
 import { DiagramPanel } from "../components/DiagramPanel";
 import { Equation } from "../components/Equation";
+import { FastenerSelection } from "../components/FastenerSelection";
 import { type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
 import { useUnitSystem } from "../components/units/UnitContext";
@@ -27,7 +28,14 @@ import {
 } from "../engineering/boltGroup";
 import { BoltGroupDiagram } from "../components/BoltGroupDiagram";
 import { convertFromState, formatSignificantFigures, fromBase, getUnitLabel, toBase, type UnitSchema, type UnitSystem } from "../engineering/units";
-import { FASTENER_SIZES, getFastenerOptions } from "../data/fasteners";
+import {
+  FASTENER_SIZES,
+  getSizes,
+  nearestSize,
+  sizeById,
+  type FastenerSystem,
+  type ThreadSeries,
+} from "../data/fasteners";
 import { SelectInput } from "../components/Dropdown";
 import { useCalculationResult } from "../hooks/useCalculationResult";
 
@@ -171,7 +179,6 @@ const initialLoads: BaseLoadInput = {
 const initialInput: BoltGroupInput = {
   pattern: initialPattern,
   patternGroups: [],
-  commonOnly: true,
   bolts: initialBolts,
   unitSystem: "imperial",
   ...initialLoads
@@ -184,6 +191,9 @@ export function BoltGroupPage() {
   const [input, setInput] = useState<BoltGroupInput>(initialInput);
   const [hover, setHover] = useState<number | null>(null);
   const [editingPatternId, setEditingPatternId] = useState<number | null>(null);
+  const [fastenerSystem, setFastenerSystem] = useState<FastenerSystem>("metric");
+  const [threadSeries, setThreadSeries] = useState<ThreadSeries>("coarse");
+  const [fastenerSizeId, setFastenerSizeId] = useState("M10x1.5");
 
   const currentInput = useCurrentInput(input, setInput, unitSystem, convertFormState);
 
@@ -220,13 +230,42 @@ export function BoltGroupPage() {
     });
   };
 
+  const updateSelectedBoltSize = (sizeId: string) => {
+    setFastenerSizeId(sizeId);
+    if (editingPatternId === null) return;
+    setInput((previous) => ({
+      ...previous,
+      unitSystem,
+      bolts: previous.bolts.map((bolt) =>
+        bolt.patternId === editingPatternId ? { ...bolt, sizeId } : bolt,
+      ),
+    }));
+  };
+
+  const changeFastenerSystem = (system: FastenerSystem) => {
+    const selectedSize = sizeById(fastenerSizeId);
+    const nextSize = nearestSize(getSizes(system, "coarse"), selectedSize?.d ?? 10);
+    setFastenerSystem(system);
+    setThreadSeries("coarse");
+    if (nextSize) updateSelectedBoltSize(nextSize.id);
+  };
+
+  const changeThreadSeries = (series: ThreadSeries) => {
+    const selectedSize = sizeById(fastenerSizeId);
+    const nextSize = nearestSize(
+      getSizes(fastenerSystem, series),
+      selectedSize?.d ?? 10,
+    );
+    setThreadSeries(series);
+    if (nextSize) updateSelectedBoltSize(nextSize.id);
+  };
+
   const appendPatternBolts = () => {
-    const defaultSize = currentInput.bolts[currentInput.bolts.length - 1]?.sizeId ?? "M10x1.5";
     const patternId = Math.max(0, ...currentInput.patternGroups.map((pattern) => pattern.id)) + 1;
     const firstBoltId = Math.max(0, ...currentInput.bolts.map((bolt) => bolt.id)) + 1;
     const remainingSlots = MAX_BOLTS - currentInput.bolts.length;
     if (remainingSlots <= 0) return;
-    const generated = generatePatternBolts(currentInput.pattern, defaultSize).slice(0, remainingSlots);
+    const generated = generatePatternBolts(currentInput.pattern, fastenerSizeId).slice(0, remainingSlots);
     const boltsToAdd = generated.map((bolt, index) => ({ ...bolt, id: firstBoltId + index, patternId }));
     const group: BoltPatternGroup = {
       id: patternId,
@@ -261,6 +300,13 @@ export function BoltGroupPage() {
 
   const editPattern = (group: BoltPatternGroup) => {
     setEditingPatternId(group.id);
+    const groupSizeId = input.bolts.find((bolt) => group.boltIds.includes(bolt.id))?.sizeId;
+    const groupSize = groupSizeId ? sizeById(groupSizeId) : undefined;
+    if (groupSize) {
+      setFastenerSystem(groupSize.system);
+      setThreadSeries(groupSize.series);
+      setFastenerSizeId(groupSize.id);
+    }
     setInput((previous) => ({
       ...previous,
       unitSystem,
@@ -290,8 +336,11 @@ export function BoltGroupPage() {
   };
 
   const sizeOptions = useMemo(
-    () => getFastenerOptions("coarse", currentInput.commonOnly),
-    [unitSystem, currentInput.commonOnly]
+    () => FASTENER_SIZES.map((size) => ({
+      value: size.id,
+      label: `${size.label}${size.common ? " ★" : ""}`,
+    })),
+    [],
   );
 
   return (
@@ -308,6 +357,22 @@ export function BoltGroupPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             {/* Left column: input cards for geometry, forces, and moments. */}
             <div className="space-y-6 lg:col-span-5">
+              <Card title="Fastener Selection" icon="fa-solid fa-screwdriver-wrench">
+                <FastenerSelection
+                  fastenerSystem={fastenerSystem}
+                  series={threadSeries}
+                  sizeId={fastenerSizeId}
+                  onFastenerSystemChange={changeFastenerSystem}
+                  onSeriesChange={changeThreadSeries}
+                  onSizeChange={updateSelectedBoltSize}
+                />
+                {editingPatternId !== null ? (
+                  <p className="mt-3 text-[11px] text-violet-700">
+                    Size changes apply to every bolt in the pattern being edited.
+                  </p>
+                ) : null}
+              </Card>
+
               {/* Geometry inputs: pattern selection and dimensions. */}
               <Card title="Bolt Coordinates" icon="fa-solid fa-shapes">
                 <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-1" >
@@ -493,7 +558,6 @@ export function BoltGroupPage() {
 
                   {/* Detailed stress breakdown for each hotspot/evaluation point. */}
                   <ResultsTable result={result} system={unitSystem} />
-
                 </>
               ) : (
                 <div>
@@ -508,7 +572,10 @@ export function BoltGroupPage() {
             </div>
           </div>
 
-
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            Results are for preliminary estimation. Verify against the governing code, data sheets
+            and engineering judgment before using them in a final design.
+          </p>
         </>
       ) : (
         <Theory />
@@ -537,8 +604,9 @@ function BoltGroupSummary({
   system: UnitSystem;
 }) {
   const lengthUnit = getUnitLabel("length", system);
-  const forceUnit = getUnitLabel("force", system);
-  const momentUnit = getUnitLabel("moment", system);
+  const forceUnit = getUnitLabel("kforce", system);
+  const momentUnit = getUnitLabel("kmoment", system);
+  const momentScale = system === "imperial" ? 12000 : 1_000_000;
 
   return (
     <Card title="Pattern, Loads and Bolt Forces" icon="fa-solid fa-bullseye">
@@ -549,17 +617,17 @@ function BoltGroupSummary({
         />
         <Metric
           label="Total force at COG"
-          value={`${formatSignificantFigures(result.Fx, 4)}, ${formatSignificantFigures(result.Fy, 4)} ${forceUnit}`}
+          value={`${formatSignificantFigures(result.Fx / 1000, 4)}, ${formatSignificantFigures(result.Fy / 1000, 4)} ${forceUnit}`}
           sub="ΣFx, ΣFy"
         />
         <Metric
           label="Moment at COG"
-          value={`${formatSignificantFigures(result.momentAtCog, 4)} ${momentUnit}`}
+          value={`${formatSignificantFigures(result.momentAtCog / momentScale, 4)} ${momentUnit}`}
           sub={result.momentAtCog > 0 ? "counter-clockwise" : result.momentAtCog < 0 ? "clockwise" : undefined}
         />
         <Metric
           label="Maximum bolt force"
-          value={`${formatSignificantFigures(result.maxForce, 4)} ${forceUnit}`}
+          value={`${formatSignificantFigures(result.maxForce / 1000, 4)} ${forceUnit}`}
           sub={result.maxBolts.length > 0 ? `bolt ${result.maxBolts.join(", ")}` : "no load"}
         />
       </div>
@@ -658,7 +726,7 @@ function convertFormState(
 // Per-bolt force-component breakdown.
 function ResultsTable({ result, system }: { result: NonNullable<ReturnType<typeof calculateBoltGroup>>; system: "imperial" | "si" }) {
   const lengthUnit = getUnitLabel("length", system);
-  const forceUnit = getUnitLabel("force", system);
+  const forceUnit = getUnitLabel("kforce", system);
   return (
     <Card className="mt-6" title="Bolt Force Breakdown" icon="fa-solid fa-list-check">
       <div className="overflow-x-auto">
@@ -683,9 +751,9 @@ function ResultsTable({ result, system }: { result: NonNullable<ReturnType<typeo
                   <td className="px-4 py-2 text-slate-800">{i}</td>
                   <td className="px-4 py-2 text-slate-800">{bolt.sizeId}{isMax ? " ★" : ""}</td>
                   <td className="px-4 py-2 text-slate-500">({formatSignificantFigures(bolt.x, 2)}, {formatSignificantFigures(bolt.y, 2)}) {lengthUnit}</td>
-                  <td className="px-4 py-2 text-slate-500">{formatSignificantFigures(bolt.fx, 2)} {forceUnit}</td>
-                  <td className="px-4 py-2 text-slate-500">{formatSignificantFigures(bolt.fy, 2)} {forceUnit}</td>
-                  <td className="px-4 py-2 text-slate-600">{formatSignificantFigures(bolt.resultant, 2)}</td>
+                  <td className="px-4 py-2 text-slate-500">{formatSignificantFigures(bolt.fx / 1000, 2)} {forceUnit}</td>
+                  <td className="px-4 py-2 text-slate-500">{formatSignificantFigures(bolt.fy / 1000, 2)} {forceUnit}</td>
+                  <td className="px-4 py-2 text-slate-600">{formatSignificantFigures(bolt.resultant / 1000, 2)} {forceUnit}</td>
                 </tr>
               );
             })}
@@ -886,15 +954,15 @@ function Theory() {
 type BoltCoordinatesWithUnits = GroupBolt & { unitSystem: UnitSystem };
 
 const boltGroupUnitSchema: UnitSchema<BoltGroupInput> = {
-  Fx: "force",
-  Fy: "force",
-  Fz: "force",
+  Fx: "kforce",
+  Fy: "kforce",
+  Fz: "kforce",
   xL: "length",
   yL: "length",
   zL: "length",
-  Mx: "moment",
-  My: "moment",
-  Mz: "moment",
+  Mx: "loadMoment",
+  My: "loadMoment",
+  Mz: "loadMoment",
 };
 
 const boltCoordinatesUnitSchema: UnitSchema<BoltCoordinatesWithUnits> = {

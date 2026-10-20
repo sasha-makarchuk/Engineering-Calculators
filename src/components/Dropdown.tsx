@@ -1,4 +1,5 @@
 import { useId } from "react";
+import type { ReactNode } from "react";
 
 // Option interface for generic select items
 export interface SelectOption<T extends string = string> {
@@ -11,7 +12,8 @@ interface SelectInputProps<T extends string = string> {
   label?: string;
   "aria-label"?: string;
   value: T;
-  options: Array<SelectOption<T>>;
+  options?: Array<SelectOption<T>>;
+  children?: ReactNode;
   onChange: (value: T) => void;
   description?: string;
   disabled?: boolean;
@@ -23,6 +25,7 @@ export function SelectInput<T extends string = string>({
   label,
   value,
   options,
+  children,
   onChange,
   description,
   disabled = false,
@@ -45,11 +48,11 @@ export function SelectInput<T extends string = string>({
           className={`box-input font-sans !pr-1 ${disabled ? "cursor-not-allowed opacity-60" : ""
             }`}
         >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {children ?? options?.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
         </select>
       </div>
       {description ? (

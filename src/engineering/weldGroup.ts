@@ -42,7 +42,6 @@ export const weldUnitSchema: UnitSchema<WeldInput> = {
     xCustom: "length",
     yCustom: "length",
     tauAllow: "stress",
-    Fx: "force",
     ...loadUnitSchema,
 };
 
@@ -164,15 +163,15 @@ function toBaseInput(input: WeldInput): BaseWeldInput {
     h: toBase(requireNumber(input.h, "h"), "length", u),
     b: toBase(requireNumber(input.b, "b"), "length", u),
     d: toBase(requireNumber(input.d ?? 0, "d"), "length", u),
-    Fx: toBase(input.Fx ?? 0, "force", u),
-    Fy: toBase(input.Fy ?? 0, "force", u),
-    Fz: toBase(input.Fz ?? 0, "force", u),
+    Fx: toBase(input.Fx ?? 0, "kforce", u),
+    Fy: toBase(input.Fy ?? 0, "kforce", u),
+    Fz: toBase(input.Fz ?? 0, "kforce", u),
     xL: toBase(input.xL ?? 0, "length", u),
     yL: toBase(input.yL ?? 0, "length", u),
     zL: toBase(input.zL ?? 0, "length", u),
-    Mx: toBase(input.Mx ?? 0, "moment", u),
-    My: toBase(input.My ?? 0, "moment", u),
-    Mz: toBase(input.Mz ?? 0, "moment", u),
+    Mx: toBase(input.Mx ?? 0, "loadMoment", u),
+    My: toBase(input.My ?? 0, "loadMoment", u),
+    Mz: toBase(input.Mz ?? 0, "loadMoment", u),
     tauAllow: toBase(requireNumber(input.tauAllow, "tauAllow"), "stress", u),
     xCustom: toBase(input.xCustom ?? 0, "length", u),
     yCustom: toBase(input.yCustom ?? 0, "length", u),
@@ -405,6 +404,6 @@ export function formatResultNumber(value: number, decimals = 2): string {
 }
 
 // Convert a base-unit result to display units and append its unit label.
-export function displayResultValue(value: number, quantity: "length" | "force" | "moment" | "stress", system: UnitSystem, decimals = 2): string {
-  return `${formatResultNumber(fromBase(value, quantity, system), decimals)} ${quantity === "moment" && system === "imperial" ? "lbf-in" : quantity === "stress" && system === "imperial" ? "psi" : quantity === "stress" ? "MPa" : quantity === "force" ? (system === "imperial" ? "lbf" : "N") : system === "imperial" ? "in" : "mm"}`;
+export function displayResultValue(value: number, quantity: "length" | "force" | "kforce" | "moment" | "kmoment" | "stress", system: UnitSystem, decimals = 2): string {
+  return `${formatResultNumber(fromBase(value, quantity, system), decimals)} ${quantity === "moment" && system === "imperial" ? "lbf-in" : quantity === "moment" ? "N-m" : quantity === "kmoment" && system === "imperial" ? "kip-ft" : quantity === "kmoment" ? "kN-m" : quantity === "stress" && system === "imperial" ? "psi" : quantity === "stress" ? "MPa" : quantity === "force" ? (system === "imperial" ? "lbf" : "N") : quantity === "kforce" ? (system === "imperial" ? "kip" : "kN") : system === "imperial" ? "in" : "mm"}`;
 }

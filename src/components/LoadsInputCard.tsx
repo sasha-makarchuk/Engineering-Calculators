@@ -31,15 +31,15 @@ export interface BaseLoadInput {
 
 // Reusable unit schema for load conversions
 export const loadUnitSchema: UnitSchema<LoadInput> = {
-    Fx: "force",
-    Fy: "force",
-    Fz: "force",
+    Fx: "kforce",
+    Fy: "kforce",
+    Fz: "kforce",
     xL: "length",
     yL: "length",
     zL: "length",
-    Mx: "moment",
-    My: "moment",
-    Mz: "moment",
+    Mx: "loadMoment",
+    My: "loadMoment",
+    Mz: "loadMoment",
 };
 
 interface LoadInputCardProps {
@@ -70,9 +70,9 @@ export function LoadsInputCard({
   const { unitSystem } = useUnitSystem();
   const isImperial = unitSystem === "imperial";
 
-  const forceStep = isImperial ? 100 : 500;
+  const forceStep = isImperial ? 0.1 : 0.5;
   const lengthStep = isImperial ? 0.5 : 1;
-  const momentStep = isImperial ? 500 : 50;
+  const momentStep = isImperial ? 0.5 : 0.05;
 
   return (
     <Card
@@ -97,7 +97,7 @@ export function LoadsInputCard({
               <td className="p-2">
                 <UnitInput
                   label="Fx Shear"
-                  quantity="force"
+                  quantity="kforce"
                   value={values.Fx ?? 0}
                   onChange={(val) => onChange("Fx", val)}
                   step={forceStep}
@@ -121,7 +121,7 @@ export function LoadsInputCard({
               <td className="p-2">
                 <UnitInput
                   label="Fy Direct"
-                  quantity="force"
+                  quantity="kforce"
                   value={values.Fy ?? 0}
                   onChange={(val) => onChange("Fy", val)}
                   step={forceStep}
@@ -146,7 +146,7 @@ export function LoadsInputCard({
                 <td className="p-2">
                   <UnitInput
                     label="Fz Out-of-Plane"
-                    quantity="force"
+                    quantity="kforce"
                     value={values.Fz ?? 0}
                     onChange={(val) => onChange("Fz", val)}
                     step={forceStep}
@@ -188,14 +188,14 @@ export function LoadsInputCard({
               <>
                 <UnitInput
                   label="Mx Bending"
-                  quantity="moment"
+                  quantity="loadMoment"
                   value={values.Mx ?? 0}
                   onChange={(val) => onChange("Mx", val)}
                   step={momentStep}
                 />
                 <UnitInput
                   label="My Bending"
-                  quantity="moment"
+                  quantity="loadMoment"
                   value={values.My ?? 0}
                   onChange={(val) => onChange("My", val)}
                   step={momentStep}
@@ -204,7 +204,7 @@ export function LoadsInputCard({
             ) : null}
             <UnitInput
               label="Mz Torsion"
-              quantity="moment"
+              quantity="loadMoment"
               value={values.Mz ?? 0}
               onChange={(val) => onChange("Mz", val)}
               step={momentStep}

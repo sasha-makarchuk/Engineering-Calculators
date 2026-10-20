@@ -16,6 +16,7 @@ export type UnitQuantity =
     | "stiffness"
     | "modulus"
     | "kmoment"
+    | "loadMoment"
     | "inertia"
     | "unitless";
 
@@ -81,6 +82,11 @@ const UNIT_DEFINITIONS: Record<UnitQuantity, Record<UnitSystem, UnitDefinition>>
     // Base unit N-mm (displayed as kN-m or kip-ft).
     kmoment: {
         imperial: { label: "kip-ft", toBase: 12 * 25.4 * 4448.2216152605 },
+        si: { label: "kN-m", toBase: 1e6 },
+    },
+    // Applied load moments use kip-in in Imperial and kN-m in SI; both convert to N-mm.
+    loadMoment: {
+        imperial: { label: "kip-in", toBase: 25.4 * 4448.2216152605 },
         si: { label: "kN-m", toBase: 1e6 },
     },
     // Base unit mm⁴ (polar moment of the bolt areas, displayed as mm⁴ or in⁴).

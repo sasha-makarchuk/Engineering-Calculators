@@ -1,13 +1,18 @@
 // Bolt strength calculator page: independent fastener-system and display-unit toggles, live results,
 // a dynamic joint diagram, and a detailed calculation section. The math lives in engineering/boltedJoint.ts.
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "../components/Card";
+import { CalculatorPageShell } from "../components/CalculatorPageShell";
+import { DiagramPanel } from "../components/DiagramPanel";
+import { SelectInput } from "../components/Dropdown";
+import { Equation } from "../components/Equation";
+import { FastenerSelection } from "../components/FastenerSelection";
 import { JointDiagram } from "../components/JointDiagram";
-import { SiteHeader, type PageTab } from "../components/SiteHeader";
+import { StatusBanner } from "../components/StatusBanner";
+import { type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
-import { UnitToggle } from "../components/UnitToggle";
 import { useUnitSystem } from "../components/units/UnitContext";
-import { BoltedJointTheory } from "./BoltedJointTheory";
+import { TheoryNomenclature, TheoryPanel, TheoryReferences, TheorySection } from "../components/TheorySection";
 import {
   CUSTOM_MATERIAL_ID,
   CUSTOM_SCATTER_ID,
@@ -55,20 +60,20 @@ import {
 // ---------------------------------------------------------------------------------------------
 
 interface PlateForm {
+  // A material ID selects database properties; custom fields are used only for custom materials.
   materialId: string;
   t: number | null;
-  // Values used only when materialId === "custom"
   sy: number;
   su: number;
   e: number;
 }
 
 interface FormState {
+  // Physical quantities use SI base units; dimensionless values remain unitless.
   fastenerSystem: FastenerSystem;
   series: ThreadSeries;
   sizeId: string;
   gradeId: string;
-  commonOnly: boolean;
   config: JointConfig;
   plate1: PlateForm;
   plate2: PlateForm;
@@ -98,6 +103,7 @@ interface FormState {
   targetFos: number | null;
 }
 
+// Reset size-dependent dimensions whenever the selected fastener changes.
 const NO_OVERRIDES = {
   washerOd: null,
   washerT: null,
@@ -106,7 +112,7 @@ const NO_OVERRIDES = {
   boltLength: null,
 } as const;
 
-// Start with round numbers in whichever display system is active when the page opens.
+// Start with round display values in the active unit system, then store them in base units.
 function initialForm(system: UnitSystem): FormState {
   const imperial = system === "imperial";
   const plate = (mm: number, inches: number): PlateForm => ({
@@ -121,7 +127,6 @@ function initialForm(system: UnitSystem): FormState {
     series: "coarse",
     sizeId: "M12x1.75",
     gradeId: DEFAULT_GRADE.metric,
-    commonOnly: false,
     config: "bolt_nut",
     plate1: plate(10, 0.375),
     plate2: plate(12, 0.5),
@@ -147,6 +152,7 @@ function initialForm(system: UnitSystem): FormState {
   };
 }
 
+// Use database material properties unless the user selected a custom plate material.
 function resolvePlate(plate: PlateForm): { sy: number; su: number; e: number } {
   if (plate.materialId === CUSTOM_MATERIAL_ID) return { sy: plate.sy, su: plate.su, e: plate.e };
   const material = findPlateMaterial(plate.materialId) ?? PLATE_MATERIALS[0];
@@ -160,6 +166,7 @@ function resolvePlate(plate: PlateForm): { sy: number; su: number; e: number } {
 // ---------------------------------------------------------------------------------------------
 
 interface Model {
+  // Selected catalog objects and their derived properties for the current form values.
   size: FastenerSize;
   gradeLabel: string;
   gp: { sp: number; sy: number; su: number };
@@ -186,7 +193,9 @@ interface Model {
   error: string | null;
 }
 
+// Resolve standards-based defaults, build engineering inputs, and run the calculation.
 function buildModel(f: FormState): Model {
+  // Resolve bolt geometry and grade properties from the selected fastener system and thread series.
   const sizes = getSizes(f.fastenerSystem, f.series);
   const size = (sizes.find((s) => s.id === f.sizeId) ?? sizes[0]) as FastenerSize;
   const grades = getGrades(f.fastenerSystem);
@@ -196,6 +205,7 @@ function buildModel(f: FormState): Model {
   const p2 = resolvePlate(f.plate2);
   const isNut = f.config === "bolt_nut";
 
+  // Standard dimensions can be overridden; disabled washers contribute no thickness to the stack.
   const t1 = f.plate1.t ?? 0;
   const t2 = f.plate2.t ?? 0;
   const washerOd = f.washerOd ?? size.washerOd;
@@ -206,14 +216,14 @@ function buildModel(f: FormState): Model {
   const engagementAuto = isNut
     ? size.nutHeight
     : autoTappedEngagement(
-        size.d,
-        size.pitch,
-        size.at,
-        gp.su,
-        p2.su,
-        t2 || size.d,
-        f.fastenerSystem,
-      );
+      size.d,
+      size.pitch,
+      size.at,
+      gp.su,
+      p2.su,
+      t2 || size.d,
+      f.fastenerSystem,
+    );
   const engagement = f.engagement ?? engagementAuto;
   const stack = isNut ? t1 + t2 + 2 * tw : t1 + tw;
   const boltLengthAuto = autoBoltLength(
@@ -225,6 +235,7 @@ function buildModel(f: FormState): Model {
   const boltLength = f.boltLength ?? boltLengthAuto;
   const nutSu = f.nutSu ?? nutSuAuto;
 
+  // Convert the selected tightening method into a preload scatter fraction.
   const scatterPreset = SCATTER_PRESETS.find((s) => s.id === f.scatterId);
   const scatter = !f.variation
     ? 0
@@ -234,6 +245,7 @@ function buildModel(f: FormState): Model {
   const nutPreset = NUT_FACTORS.find((n) => n.id === f.nutFactorId);
   const nutFactor = nutPreset ? nutPreset.k : (f.nutFactorCustom ?? 0);
 
+  // Keep both automatic and effective values so the UI can label and reset overridden fields.
   const base = {
     size,
     gradeLabel: grade?.label ?? "",
@@ -251,6 +263,7 @@ function buildModel(f: FormState): Model {
     nutFactor,
   };
 
+  // Return an input error before calling the engineering model when required values are missing.
   if (f.plate1.t === null || f.plate2.t === null) {
     return { ...base, input: null, result: null, error: "Enter both plate thicknesses." };
   }
@@ -290,6 +303,7 @@ function buildModel(f: FormState): Model {
     scatter,
   };
 
+  // Normalize calculation errors into page state so the result panels can show a useful message.
   try {
     return { ...base, input, result: calculateBoltedJoint(input), error: null };
   } catch (error) {
@@ -303,236 +317,10 @@ function buildModel(f: FormState): Model {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Small form components
+// Page-specific result components
 // ---------------------------------------------------------------------------------------------
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  onChange: (value: T) => void;
-  label?: string;
-}) {
-  return (
-    <div>
-      {label ? <span className="label-input">{label}</span> : null}
-      <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={
-              value === option.value
-                ? "flex-1 rounded-md bg-sky-600 px-3 py-1.5 font-medium text-white transition-all"
-                : "flex-1 rounded-md px-3 py-1.5 font-medium text-slate-500 transition-all hover:text-slate-800"
-            }
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  children,
-  description,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: ReactNode;
-  description?: string;
-}) {
-  const id = useId();
-  return (
-    <div>
-      <label htmlFor={id} className="label-input">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="box-input pr-3 font-sans"
-      >
-        {children}
-      </select>
-      {description ? <p className="mt-1 text-[11px] text-slate-400">{description}</p> : null}
-    </div>
-  );
-}
-
-// Plain numeric field (no units) that keeps what the user typed while editing.
-function NumberField({
-  label,
-  value,
-  onChange,
-  suffix,
-  step,
-  min,
-  description,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (value: number | null) => void;
-  suffix?: string;
-  step?: number;
-  min?: number;
-  description?: string;
-}) {
-  const id = useId();
-  const [text, setText] = useState<string | null>(null);
-  const shown = text ?? (value === null ? "" : formatSignificantFigures(value, 6));
-  return (
-    <div>
-      <label htmlFor={id} className="label-input">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          value={shown}
-          step={step}
-          min={min}
-          onChange={(event) => {
-            const raw = event.target.value;
-            setText(raw);
-            if (raw === "") {
-              onChange(null);
-              return;
-            }
-            const parsed = Number(raw);
-            onChange(Number.isFinite(parsed) ? parsed : null);
-          }}
-          onBlur={() => setText(null)}
-          className="box-input"
-        />
-        {suffix ? (
-          <span className="pointer-events-none absolute right-3 top-2 text-xs text-slate-400">
-            {suffix}
-          </span>
-        ) : null}
-      </div>
-      {description ? <p className="mt-1 text-[11px] text-slate-400">{description}</p> : null}
-    </div>
-  );
-}
-
-// UnitInput wrapper that stores values in SI base units and converts to the active display system.
-function BaseUnitInput({
-  label,
-  quantity,
-  base,
-  onBase,
-  steps,
-  min,
-  description,
-}: {
-  label: string;
-  quantity: UnitQuantity;
-  base: number | null;
-  onBase: (value: number | null) => void;
-  steps?: [number, number];
-  min?: number;
-  description?: string;
-}) {
-  const { unitSystem } = useUnitSystem();
-  return (
-    <UnitInput
-      label={label}
-      quantity={quantity}
-      value={base === null ? null : fromBase(base, quantity, unitSystem)}
-      onChange={(value) => onBase(value === null ? null : toBase(value, quantity, unitSystem))}
-      step={steps ? (unitSystem === "imperial" ? steps[1] : steps[0]) : undefined}
-      min={min}
-      description={description}
-    />
-  );
-}
-
-// Field pre-filled with a standard/automatic value that the user can overwrite, with a reset link.
-function OverrideInput({
-  label,
-  quantity,
-  unitSystem,
-  autoBase,
-  overrideBase,
-  onChange,
-  step,
-}: {
-  label: string;
-  quantity: UnitQuantity;
-  unitSystem: UnitSystem;
-  autoBase: number;
-  overrideBase: number | null;
-  onChange: (base: number | null) => void;
-  step?: number;
-}) {
-  const id = useId();
-  const [text, setText] = useState<string | null>(null);
-  const unit = getUnitLabel(quantity, unitSystem);
-  const overridden = overrideBase !== null;
-  const shownValue = fromBase(overridden ? overrideBase : autoBase, quantity, unitSystem);
-  const shown = text ?? formatSignificantFigures(shownValue, 4);
-  return (
-    <div>
-      <label htmlFor={id} className="label-input flex items-center justify-between">
-        <span>{label}</span>
-        {overridden ? (
-          <button
-            type="button"
-            onClick={() => {
-              setText(null);
-              onChange(null);
-            }}
-            className="text-[10px] font-medium text-sky-600 hover:text-sky-800"
-          >
-            reset
-          </button>
-        ) : (
-          <span className="text-[10px] font-normal text-slate-400">standard</span>
-        )}
-      </label>
-      <div className="relative">
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          value={shown}
-          step={step}
-          onChange={(event) => {
-            const raw = event.target.value;
-            setText(raw);
-            if (raw === "") {
-              onChange(null);
-              return;
-            }
-            const parsed = Number(raw);
-            if (Number.isFinite(parsed)) onChange(toBase(parsed, quantity, unitSystem));
-          }}
-          onBlur={() => setText(null)}
-          className={`box-input ${overridden ? "" : "text-slate-500"}`}
-        />
-        <span className="pointer-events-none absolute right-3 top-2 text-xs text-slate-400">
-          {unit}
-        </span>
-      </div>
-    </div>
-  );
-}
-
+// Shared visual mapping for factor-of-safety status labels.
 const STATUS_STYLES: Record<FosStatus | "info", string> = {
   pass: "bg-emerald-100 text-emerald-700",
   warn: "bg-amber-100 text-amber-700",
@@ -546,6 +334,7 @@ const STATUS_LABELS: Record<FosStatus | "info", string> = {
   info: "—",
 };
 
+// Compact pass, warning, fail, or informational indicator.
 function StatusPill({ status }: { status: FosStatus | "info" }) {
   return (
     <span
@@ -556,6 +345,7 @@ function StatusPill({ status }: { status: FosStatus | "info" }) {
   );
 }
 
+// Reusable metric tile for calculated geometry and preload values.
 function Tile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
@@ -573,21 +363,24 @@ type TabId = "properties" | "preload" | "details";
 
 export function BoltedJointPage() {
   const { unitSystem } = useUnitSystem();
+  // Keep editable form values separate from the derived calculation model below.
   const [form, setForm] = useState<FormState>(() => initialForm(unitSystem));
   const [pageTab, setPageTab] = useState<PageTab>("calc");
   const [tab, setTab] = useState<TabId>("properties");
   const [resetKey, setResetKey] = useState(0);
 
+  // Recompute automatic dimensions and results whenever a form value changes.
   const model = useMemo(() => buildModel(form), [form]);
   const { size, result } = model;
   const fastenerUnits: UnitSystem = form.fastenerSystem === "metric" ? "si" : "imperial";
 
+  // Typed field updates keep the form model aligned with its declared field types.
   const update = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     setForm((previous) => ({ ...previous, [field]: value }));
   const updatePlate = (which: "plate1" | "plate2", patch: Partial<PlateForm>) =>
     setForm((previous) => ({ ...previous, [which]: { ...previous[which], ...patch } }));
 
-  // Changing system, series or size clears overrides because the standard values belong to the old size.
+  // Changing the fastener system resets grade, thread series, and all size-specific overrides.
   const changeSystem = (system: FastenerSystem) => {
     setForm((previous) => {
       const list = getSizes(system, "coarse");
@@ -610,13 +403,7 @@ export function BoltedJointPage() {
     });
   };
 
-  const allSizes = getSizes(form.fastenerSystem, form.series);
-  const visibleSizes = form.commonOnly
-    ? allSizes.filter((s) => s.common || s.id === size.id)
-    : allSizes;
-  const commonSizes = visibleSizes.filter((s) => s.common);
-  const otherSizes = visibleSizes.filter((s) => !s.common);
-  const grades = getGrades(form.fastenerSystem);
+  // Use different units for fastener dimensions when the selected bolt system differs from the page toggle.
   const isNut = form.config === "bolt_nut";
 
   const lengthUnit = getUnitLabel("length", unitSystem);
@@ -630,13 +417,14 @@ export function BoltedJointPage() {
 
   const target = form.targetFos ?? 1.5;
 
+  // Render one plate's material and thickness fields, including custom strength inputs when needed.
   const plateFields = (which: "plate1" | "plate2", title: string) => {
     const plate = form[which];
     const material = findPlateMaterial(plate.materialId);
     return (
       <div className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3">
         <h3 className="text-xs font-bold text-slate-600">{title}</h3>
-        <SelectField
+        <SelectInput
           label="Material"
           value={plate.materialId}
           onChange={(value) => updatePlate(which, { materialId: value })}
@@ -648,36 +436,40 @@ export function BoltedJointPage() {
             </option>
           ))}
           <option value={CUSTOM_MATERIAL_ID}>Custom material…</option>
-        </SelectField>
-        <BaseUnitInput
+        </SelectInput>
+        <UnitInput
           label="Thickness"
           quantity="length"
-          base={plate.t}
-          onBase={(value) => updatePlate(which, { t: value })}
+          value={plate.t}
+          onChange={(value) => updatePlate(which, { t: value })}
+          valueIsBase
           min={0.000001}
-          steps={[1, 0.0625]}
+          step={unitSystem === "imperial" ? 0.0625 : 1}
         />
         {plate.materialId === CUSTOM_MATERIAL_ID ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <BaseUnitInput
+            <UnitInput
               label="Yield (Sy)"
               quantity="kstress"
-              base={plate.sy}
-              onBase={(value) => updatePlate(which, { sy: value ?? 0 })}
+              value={plate.sy}
+              onChange={(value) => updatePlate(which, { sy: value ?? 0 })}
+              valueIsBase
               min={0.000001}
             />
-            <BaseUnitInput
+            <UnitInput
               label="Ultimate (Su)"
               quantity="kstress"
-              base={plate.su}
-              onBase={(value) => updatePlate(which, { su: value ?? 0 })}
+              value={plate.su}
+              onChange={(value) => updatePlate(which, { su: value ?? 0 })}
+              valueIsBase
               min={0.000001}
             />
-            <BaseUnitInput
+            <UnitInput
               label="Modulus (E)"
               quantity="modulus"
-              base={plate.e}
-              onBase={(value) => updatePlate(which, { e: value ?? 0 })}
+              value={plate.e}
+              onChange={(value) => updatePlate(which, { e: value ?? 0 })}
+              valueIsBase
               min={0.000001}
             />
           </div>
@@ -692,553 +484,654 @@ export function BoltedJointPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-800 antialiased">
-      <SiteHeader
-        icon="fa-solid fa-screwdriver-wrench"
-        title={
-          <>
-            Bolt Strength Calculator{" "}
-            <span className="rounded border border-sky-700/50 bg-sky-900/80 px-2 py-0.5 text-xs font-normal text-sky-200">
-              Engineering Tool
-            </span>
-          </>
-        }
-        subtitle="Preloaded joint strength, separation, thread stripping and bearing"
-        right = {< UnitToggle />}
-        pageTab = { pageTab }
-        setPageTab = { setPageTab }
-      >
-      </SiteHeader>
+    <CalculatorPageShell
+      icon="fa-solid fa-screwdriver-wrench"
+      title="Bolt Strength Calculator"
+      subtitle="Preloaded joint strength, separation, thread stripping and bearing"
+      pageTab={pageTab}
+      setPageTab={setPageTab}
+    >
+      {pageTab === "calc" ? (
+        <>
+          {/* Main calculator content: joint inputs, diagram, and results. */}
+          <p className="mb-5 text-sm text-slate-500">
+            Analyze preloaded bolted joints using Shigley&apos;s method. The unit toggle sets how
+            plate thickness, loads and stresses are displayed; the fastener system sets bolt sizes
+            and thread series.
+          </p>
 
-      <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-6 sm:px-6 lg:px-8">
-        {pageTab === "theory" ? (
-          <BoltedJointTheory />
-        ) : (
-          <>
-            <p className="mb-5 text-sm text-slate-500">
-              Analyze preloaded bolted joints using Shigley&apos;s method. The unit toggle sets how
-              plate thickness, loads and stresses are displayed; the fastener system sets bolt sizes
-              and thread series.
-            </p>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Input cards for fastener selection, joint geometry, loads, and preload. */}
+            <div key={resetKey} className="space-y-6 lg:col-span-7">
+              {/* Fastener system, thread series, grade, size, and joint configuration. */}
+              <Card title="Fastener & Joint Configuration" icon="fa-solid fa-screwdriver-wrench">
+                <div className="space-y-4">
+                  <FastenerSelection
+                    fastenerSystem={form.fastenerSystem}
+                    series={form.series}
+                    sizeId={size.id}
+                    onFastenerSystemChange={changeSystem}
+                    onSeriesChange={changeSeries}
+                    onSizeChange={(value) =>
+                      setForm((previous) => ({ ...previous, sizeId: value, ...NO_OVERRIDES }))
+                    }
+                    gradeId={form.gradeId}
+                    onGradeChange={(value) =>
+                      setForm((previous) => ({ ...previous, gradeId: value, nutSu: null }))
+                    }
+                    config={form.config}
+                    onConfigChange={(value) =>
+                      setForm((previous) => ({
+                        ...previous,
+                        config: value,
+                        engagement: null,
+                        boltLength: null,
+                      }))
+                    }
+                    showGrade
+                    showJointConfiguration
+                  />
+                  <p className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
+                    {size.label} · d {fastLen(size.d)} · pitch {fastLen(size.pitch)} · At{" "}
+                    {disp(size.at, "area", 4)} · Sp {disp(model.gp.sp, "kstress", 3)} · Sy{" "}
+                    {disp(model.gp.sy, "kstress", 3)} · Su {disp(model.gp.su, "kstress", 3)}
+                  </p>
+                </div>
+              </Card>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Inputs */}
-              <div key={resetKey} className="space-y-6 lg:col-span-7">
-                <Card
-                  title="1. Fastener & Joint Configuration"
-                  icon="fa-solid fa-screwdriver-wrench"
-                >
-                  <div className="space-y-4">
-                    <Segmented
-                      label="Fastener system"
-                      value={form.fastenerSystem}
-                      onChange={changeSystem}
-                      options={[
-                        { value: "metric", label: "Metric bolts" },
-                        { value: "imperial", label: "Imperial bolts" },
-                      ]}
-                    />
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <SelectField
-                        label="Thread type"
-                        value={form.series}
-                        onChange={(value) => changeSeries(value as ThreadSeries)}
-                      >
-                        <option value="coarse">
-                          {form.fastenerSystem === "metric" ? "Coarse" : "Coarse (UNC)"}
-                        </option>
-                        <option value="fine">
-                          {form.fastenerSystem === "metric" ? "Fine" : "Fine (UNF)"}
-                        </option>
-                      </SelectField>
-                      <SelectField
-                        label="Material / grade"
-                        value={grades.find((g) => g.id === form.gradeId)?.id ?? grades[0]?.id ?? ""}
-                        onChange={(value) =>
-                          setForm((previous) => ({ ...previous, gradeId: value, nutSu: null }))
-                        }
-                      >
-                        {grades.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.label} ({g.standard})
+              {/* Plate materials, joint dimensions, washers, and clearance holes. */}
+              <Card title="Joint Geometry" icon="fa-solid fa-layer-group">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {plateFields("plate1", "Plate 1 (under bolt head)")}
+                    {plateFields("plate2", isNut ? "Plate 2 (nut side)" : "Plate 2 (tapped)")}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <SelectInput
+                      label="Washers"
+                      value={form.washerEnabled ? "standard" : "none"}
+                      onChange={(value) => update("washerEnabled", value === "standard")}
+                      description={
+                        isNut
+                          ? "Standard washers go under the head and the nut."
+                          : "A standard washer goes under the head."
+                      }
+                    >
+                      <option value="standard">Standard flat washers</option>
+                      <option value="none">None</option>
+                    </SelectInput>
+                    <SelectInput
+                      label="Clearance hole fit"
+                      value={form.holeFit}
+                      onChange={(value) =>
+                        setForm((previous) => ({
+                          ...previous,
+                          holeFit: value as HoleFit,
+                          hole: null,
+                        }))
+                      }
+                    >
+                      {(Object.keys(HOLE_FIT_LABELS[form.fastenerSystem]) as HoleFit[]).map(
+                        (fit) => (
+                          <option key={fit} value={fit}>
+                            {HOLE_FIT_LABELS[form.fastenerSystem][fit]}
                           </option>
-                        ))}
-                      </SelectField>
-                      <div>
-                        <SelectField
-                          label="Bolt size"
-                          value={size.id}
-                          onChange={(value) =>
-                            setForm((previous) => ({ ...previous, sizeId: value, ...NO_OVERRIDES }))
-                          }
-                        >
-                          {commonSizes.length > 0 ? (
-                            <optgroup label="★ Common sizes">
-                              {commonSizes.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  ★ {s.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ) : null}
-                          {otherSizes.length > 0 ? (
-                            <optgroup label="Other sizes">
-                              {otherSizes.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ) : null}
-                        </SelectField>
-                        <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-slate-500">
-                          <input
-                            type="checkbox"
-                            checked={form.commonOnly}
-                            onChange={(event) => update("commonOnly", event.target.checked)}
-                            className="h-3.5 w-3.5 accent-sky-600"
-                          />
-                          Show common sizes only
-                        </label>
-                      </div>
-                      <div>
-                        <span className="label-input">Joint configuration</span>
-                        <div className="flex gap-4 pt-1.5 text-xs text-slate-700">
-                          <label className="flex cursor-pointer items-center gap-2">
-                            <input
-                              type="radio"
-                              name="config"
-                              checked={isNut}
-                              onChange={() =>
-                                setForm((previous) => ({
-                                  ...previous,
-                                  config: "bolt_nut",
-                                  engagement: null,
-                                  boltLength: null,
-                                }))
-                              }
-                              className="accent-sky-600"
-                            />{" "}
-                            Bolt + nut
-                          </label>
-                          <label className="flex cursor-pointer items-center gap-2">
-                            <input
-                              type="radio"
-                              name="config"
-                              checked={!isNut}
-                              onChange={() =>
-                                setForm((previous) => ({
-                                  ...previous,
-                                  config: "tapped_hole",
-                                  engagement: null,
-                                  boltLength: null,
-                                }))
-                              }
-                              className="accent-sky-600"
-                            />{" "}
-                            Tapped hole
-                          </label>
-                        </div>
-                      </div>
+                        ),
+                      )}
+                    </SelectInput>
+                  </div>
+
+                  <div>
+                    <h3 className="mb-2 text-xs font-bold text-slate-600">
+                      Fastener dimensions{" "}
+                      <span className="font-normal text-slate-400">
+                        (standard values; overwrite any field)
+                      </span>
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      <UnitInput
+                        label="Hole diameter"
+                        quantity="length"
+                        unitSystem={fastenerUnits}
+                        value={form.hole}
+                        standardValue={model.auto.hole}
+                        valueIsBase
+                        showStandard
+                        onChange={(value) => update("hole", value)}
+                      />
+                      {form.washerEnabled ? (
+                        <UnitInput
+                          label="Washer OD"
+                          quantity="length"
+                          unitSystem={fastenerUnits}
+                          value={form.washerOd}
+                          standardValue={model.auto.washerOd}
+                          valueIsBase
+                          showStandard
+                          onChange={(value) => update("washerOd", value)}
+                        />
+                      ) : null}
+                      {form.washerEnabled ? (
+                        <UnitInput
+                          label="Washer thickness"
+                          quantity="length"
+                          unitSystem={fastenerUnits}
+                          value={form.washerT}
+                          standardValue={model.auto.washerT}
+                          valueIsBase
+                          showStandard
+                          onChange={(value) => update("washerT", value)}
+                        />
+                      ) : null}
+                      <UnitInput
+                        label={isNut ? "Thread engagement (nut)" : "Thread engagement"}
+                        quantity="length"
+                        unitSystem={fastenerUnits}
+                        value={form.engagement}
+                        standardValue={model.auto.engagement}
+                        valueIsBase
+                        showStandard
+                        onChange={(value) => update("engagement", value)}
+                      />
+                      <UnitInput
+                        label="Bolt length"
+                        quantity="length"
+                        unitSystem={fastenerUnits}
+                        value={form.boltLength}
+                        standardValue={model.auto.boltLength}
+                        valueIsBase
+                        showStandard
+                        onChange={(value) => update("boltLength", value)}
+                      />
+                      {isNut ? (
+                        <UnitInput
+                          label="Nut ultimate strength"
+                          quantity="kstress"
+                          unitSystem={unitSystem}
+                          value={form.nutSu}
+                          standardValue={model.auto.nutSu}
+                          valueIsBase
+                          showStandard
+                          onChange={(value) => update("nutSu", value)}
+                        />
+                      ) : null}
                     </div>
-                    <p className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
-                      {size.label} · d {fastLen(size.d)} · pitch {fastLen(size.pitch)} · At{" "}
-                      {disp(size.at, "area", 4)} · Sp {disp(model.gp.sp, "kstress", 3)} · Sy{" "}
-                      {disp(model.gp.sy, "kstress", 3)} · Su {disp(model.gp.su, "kstress", 3)}
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Bolt lengths, washers and holes follow the fastener system. Grip length
+                      (computed): {result ? dispLen(result.grip) : "—"}.
+                      {isNut
+                        ? " The nut is assumed matched to the bolt unless you overwrite its strength."
+                        : " Thread engagement defaults to the length needed to develop the bolt strength."}
                     </p>
                   </div>
-                </Card>
+                </div>
+              </Card>
 
-                <Card title="2. Joint Geometry" icon="fa-solid fa-layer-group">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {plateFields("plate1", "Plate 1 (under bolt head)")}
-                      {plateFields("plate2", isNut ? "Plate 2 (nut side)" : "Plate 2 (tapped)")}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <SelectField
-                        label="Washers"
-                        value={form.washerEnabled ? "standard" : "none"}
-                        onChange={(value) => update("washerEnabled", value === "standard")}
-                        description={
-                          isNut
-                            ? "Standard washers go under the head and the nut."
-                            : "A standard washer goes under the head."
-                        }
-                      >
-                        <option value="standard">Standard flat washers</option>
-                        <option value="none">None</option>
-                      </SelectField>
-                      <SelectField
-                        label="Clearance hole fit"
-                        value={form.holeFit}
-                        onChange={(value) =>
-                          setForm((previous) => ({
-                            ...previous,
-                            holeFit: value as HoleFit,
-                            hole: null,
-                          }))
-                        }
-                      >
-                        {(Object.keys(HOLE_FIT_LABELS[form.fastenerSystem]) as HoleFit[]).map(
-                          (fit) => (
-                            <option key={fit} value={fit}>
-                              {HOLE_FIT_LABELS[form.fastenerSystem][fit]}
-                            </option>
-                          ),
-                        )}
-                      </SelectField>
-                    </div>
-
-                    <div>
-                      <h3 className="mb-2 text-xs font-bold text-slate-600">
-                        Fastener dimensions{" "}
-                        <span className="font-normal text-slate-400">
-                          (standard values; overwrite any field)
-                        </span>
-                      </h3>
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        <OverrideInput
-                          label="Hole diameter"
-                          quantity="length"
-                          unitSystem={fastenerUnits}
-                          autoBase={model.auto.hole}
-                          overrideBase={form.hole}
-                          onChange={(value) => update("hole", value)}
-                        />
-                        {form.washerEnabled ? (
-                          <OverrideInput
-                            label="Washer OD"
-                            quantity="length"
-                            unitSystem={fastenerUnits}
-                            autoBase={model.auto.washerOd}
-                            overrideBase={form.washerOd}
-                            onChange={(value) => update("washerOd", value)}
-                          />
-                        ) : null}
-                        {form.washerEnabled ? (
-                          <OverrideInput
-                            label="Washer thickness"
-                            quantity="length"
-                            unitSystem={fastenerUnits}
-                            autoBase={model.auto.washerT}
-                            overrideBase={form.washerT}
-                            onChange={(value) => update("washerT", value)}
-                          />
-                        ) : null}
-                        <OverrideInput
-                          label={isNut ? "Thread engagement (nut)" : "Thread engagement"}
-                          quantity="length"
-                          unitSystem={fastenerUnits}
-                          autoBase={model.auto.engagement}
-                          overrideBase={form.engagement}
-                          onChange={(value) => update("engagement", value)}
-                        />
-                        <OverrideInput
-                          label="Bolt length"
-                          quantity="length"
-                          unitSystem={fastenerUnits}
-                          autoBase={model.auto.boltLength}
-                          overrideBase={form.boltLength}
-                          onChange={(value) => update("boltLength", value)}
-                        />
-                        {isNut ? (
-                          <OverrideInput
-                            label="Nut ultimate strength"
-                            quantity="kstress"
-                            unitSystem={unitSystem}
-                            autoBase={model.auto.nutSu}
-                            overrideBase={form.nutSu}
-                            onChange={(value) => update("nutSu", value)}
-                          />
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-[11px] text-slate-400">
-                        Bolt lengths, washers and holes follow the fastener system. Grip length
-                        (computed): {result ? dispLen(result.grip) : "—"}.
-                        {isNut
-                          ? " The nut is assumed matched to the bolt unless you overwrite its strength."
-                          : " Thread engagement defaults to the length needed to develop the bolt strength."}
-                      </p>
-                    </div>
+              {/* Applied loading and preload method, including optional variation. */}
+              <Card title="Loads & Preload" icon="fa-solid fa-arrows-down-to-line">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <UnitInput
+                      label="External tensile load"
+                      quantity="kforce"
+                      value={form.tensile}
+                      onChange={(value) => update("tensile", value)}
+                      valueIsBase
+                      min={0}
+                      step={unitSystem === "imperial" ? 0.1 : 0.5}
+                    />
+                    <UnitInput
+                      label="Shear load"
+                      quantity="kforce"
+                      value={form.shear}
+                      onChange={(value) => update("shear", value)}
+                      valueIsBase
+                      min={0}
+                      step={unitSystem === "imperial" ? 0.1 : 0.5}
+                    />
+                    <UnitInput
+                      label="Required clamp force"
+                      quantity="kforce"
+                      value={form.requiredClamp}
+                      onChange={(value) => update("requiredClamp", value)}
+                      valueIsBase
+                      min={0}
+                      step={unitSystem === "imperial" ? 0.1 : 0.5}
+                      description="0 = no requirement."
+                    />
+                    <UnitInput
+                      label="Friction coefficient (μ)"
+                      quantity="unitless"
+                      value={form.mu}
+                      onChange={(value) => update("mu", value)}
+                      min={0}
+                      step={0.01}
+                      description="For slip resistance."
+                    />
                   </div>
-                </Card>
+                  <SelectInput
+                    label="Shear plane passes through"
+                    value={form.shearPlane}
+                    onChange={(value) => update("shearPlane", value as ShearPlane)}
+                  >
+                    <option value="threads">Threads (tensile stress area)</option>
+                    <option value="shank">Unthreaded shank (full area)</option>
+                  </SelectInput>
 
-                <Card title="3. Loads & Preload" icon="fa-solid fa-arrows-down-to-line">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <BaseUnitInput
-                        label="External tensile load"
-                        quantity="kforce"
-                        base={form.tensile}
-                        onBase={(value) => update("tensile", value)}
-                        min={0}
-                        steps={[0.5, 0.1]}
-                      />
-                      <BaseUnitInput
-                        label="Shear load"
-                        quantity="kforce"
-                        base={form.shear}
-                        onBase={(value) => update("shear", value)}
-                        min={0}
-                        steps={[0.5, 0.1]}
-                      />
-                      <BaseUnitInput
-                        label="Required clamp force"
-                        quantity="kforce"
-                        base={form.requiredClamp}
-                        onBase={(value) => update("requiredClamp", value)}
-                        min={0}
-                        steps={[0.5, 0.1]}
-                        description="0 = no requirement."
-                      />
-                      <NumberField
-                        label="Friction coefficient (μ)"
-                        value={form.mu}
-                        onChange={(value) => update("mu", value)}
-                        min={0}
-                        step={0.01}
-                        description="For slip resistance."
-                      />
-                    </div>
-                    <SelectField
-                      label="Shear plane passes through"
-                      value={form.shearPlane}
-                      onChange={(value) => update("shearPlane", value as ShearPlane)}
+                  <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                    <SelectInput
+                      label="Preload type"
+                      value={form.preloadMode}
+                      onChange={(value) => update("preloadMode", value as PreloadMode)}
                     >
-                      <option value="threads">Threads (tensile stress area)</option>
-                      <option value="shank">Unthreaded shank (full area)</option>
-                    </SelectField>
-
-                    <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
-                      <SelectField
-                        label="Preload type"
-                        value={form.preloadMode}
-                        onChange={(value) => update("preloadMode", value as PreloadMode)}
-                      >
-                        <option value="percent">Target preload (% of proof load)</option>
-                        <option value="force">Specified preload force</option>
-                        <option value="torque">Tightening torque</option>
-                      </SelectField>
-                      {form.preloadMode === "percent" ? (
-                        <NumberField
-                          label="Target preload"
-                          value={form.preloadPercent}
-                          onChange={(value) => update("preloadPercent", value)}
-                          suffix="%"
-                          min={0}
-                          step={5}
-                          description="Typically 75 % (reusable) to 90 % (permanent)."
-                        />
-                      ) : form.preloadMode === "force" ? (
-                        <BaseUnitInput
-                          label="Preload force"
-                          quantity="kforce"
-                          base={form.preloadForce}
-                          onBase={(value) => update("preloadForce", value)}
-                          min={0.000001}
-                          steps={[1, 0.5]}
-                        />
-                      ) : (
-                        <BaseUnitInput
-                          label="Tightening torque"
-                          quantity="torque"
-                          base={form.preloadTorque}
-                          onBase={(value) => update("preloadTorque", value)}
-                          min={0.000001}
-                          steps={[10, 10]}
-                        />
-                      )}
-                      <SelectField
-                        label="Nut factor (K)"
-                        value={form.nutFactorId}
-                        onChange={(value) => update("nutFactorId", value)}
-                        description="Used for the torque ⇄ preload conversion, T = K·Fi·d."
-                      >
-                        {NUT_FACTORS.map((n) => (
-                          <option key={n.id} value={n.id}>
-                            {n.label} (K = {n.k})
-                          </option>
-                        ))}
-                        <option value="custom">Custom…</option>
-                      </SelectField>
-                      {form.nutFactorId === "custom" ? (
-                        <NumberField
-                          label="Custom K"
-                          value={form.nutFactorCustom}
-                          onChange={(value) => update("nutFactorCustom", value)}
-                          min={0.01}
-                          step={0.01}
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-3 border-t border-slate-100 pt-4">
-                      <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={form.variation}
-                          onChange={(event) => update("variation", event.target.checked)}
-                          className="h-3.5 w-3.5 accent-sky-600"
-                        />
-                        Include preload variation (min / max)
-                      </label>
-                      {form.variation ? (
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <SelectField
-                            label="Tightening method"
-                            value={form.scatterId}
-                            onChange={(value) => update("scatterId", value)}
-                          >
-                            {SCATTER_PRESETS.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.label}
-                              </option>
-                            ))}
-                            <option value={CUSTOM_SCATTER_ID}>Custom variation…</option>
-                          </SelectField>
-                          {form.scatterId === CUSTOM_SCATTER_ID ? (
-                            <NumberField
-                              label="Variation (±)"
-                              value={form.scatterCustom}
-                              onChange={(value) => update("scatterCustom", value)}
-                              suffix="%"
-                              min={0}
-                              step={5}
-                            />
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm(initialForm(unitSystem));
-                        setResetKey((key) => key + 1);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700"
-                    >
-                      <i className="fa-solid fa-rotate-left" aria-hidden="true" /> Reset to defaults
-                    </button>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Diagram and results */}
-              <div className="space-y-6 lg:col-span-5">
-                <Card title="Joint Diagram" icon="fa-solid fa-ruler-combined">
-                  <div className="flex justify-center">
-                    {result && model.input ? (
-                      <JointDiagram
-                        config={form.config}
-                        d={size.d}
-                        headAF={size.headAF}
-                        headHeight={size.headHeight}
-                        nutHeight={size.nutHeight}
-                        washerEnabled={form.washerEnabled}
-                        washerOd={model.values.washerOd}
-                        washerT={model.values.washerT}
-                        hole={model.values.hole}
-                        t1={model.input.plate1.t}
-                        t2={model.input.plate2.t}
-                        grip={result.grip}
-                        engagement={result.engagement}
-                        boltLength={model.values.boltLength}
-                        threadLength={result.threadLength}
-                        system={unitSystem}
+                      <option value="percent">Target preload (% of proof load)</option>
+                      <option value="force">Specified preload force</option>
+                      <option value="torque">Tightening torque</option>
+                    </SelectInput>
+                    {form.preloadMode === "percent" ? (
+                      <UnitInput
+                        label="Target preload"
+                        quantity="unitless"
+                        value={form.preloadPercent}
+                        onChange={(value) => update("preloadPercent", value)}
+                        suffix="%"
+                        min={0}
+                        step={5}
+                        description="Typically 75 % (reusable) to 90 % (permanent)."
+                      />
+                    ) : form.preloadMode === "force" ? (
+                      <UnitInput
+                        label="Preload force"
+                        quantity="kforce"
+                        value={form.preloadForce}
+                        onChange={(value) => update("preloadForce", value)}
+                        valueIsBase
+                        min={0.000001}
+                        step={unitSystem === "imperial" ? 0.5 : 1}
                       />
                     ) : (
-                      <div className="flex min-h-[320px] w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-600">
-                        Enter valid inputs to display the diagram.
-                      </div>
+                      <UnitInput
+                        label="Tightening torque"
+                        quantity="torque"
+                        value={form.preloadTorque}
+                        onChange={(value) => update("preloadTorque", value)}
+                        valueIsBase
+                        min={0.000001}
+                        step={10}
+                      />
                     )}
+                    <SelectInput
+                      label="Nut factor (K)"
+                      value={form.nutFactorId}
+                      onChange={(value) => update("nutFactorId", value)}
+                      description="Used for the torque ⇄ preload conversion, T = K·Fi·d."
+                    >
+                      {NUT_FACTORS.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.label} (K = {n.k})
+                        </option>
+                      ))}
+                      <option value="custom">Custom…</option>
+                    </SelectInput>
+                    {form.nutFactorId === "custom" ? (
+                      <UnitInput
+                        label="Custom K"
+                        quantity="unitless"
+                        value={form.nutFactorCustom}
+                        onChange={(value) => update("nutFactorCustom", value)}
+                        min={0.01}
+                        step={0.01}
+                      />
+                    ) : null}
                   </div>
-                </Card>
 
-                <Card title="Key Results" icon="fa-solid fa-list-check">
-                  {result ? (
-                    <ResultsPanel
-                      result={result}
-                      model={model}
-                      form={form}
-                      target={target}
-                      onTarget={(value) => update("targetFos", value)}
-                      unitSystem={unitSystem}
-                    />
-                  ) : (
-                    <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-                      {model.error}
-                    </div>
-                  )}
-                </Card>
-              </div>
+                  <div className="space-y-3 border-t border-slate-100 pt-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={form.variation}
+                        onChange={(event) => update("variation", event.target.checked)}
+                        className="h-3.5 w-3.5 accent-sky-600"
+                      />
+                      Include preload variation (min / max)
+                    </label>
+                    {form.variation ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <SelectInput
+                          label="Tightening method"
+                          value={form.scatterId}
+                          onChange={(value) => update("scatterId", value)}
+                        >
+                          {SCATTER_PRESETS.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.label}
+                            </option>
+                          ))}
+                          <option value={CUSTOM_SCATTER_ID}>Custom variation…</option>
+                        </SelectInput>
+                        {form.scatterId === CUSTOM_SCATTER_ID ? (
+                          <UnitInput
+                            label="Variation (±)"
+                            quantity="unitless"
+                            value={form.scatterCustom}
+                            onChange={(value) => update("scatterCustom", value)}
+                            suffix="%"
+                            min={0}
+                            step={5}
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(initialForm(unitSystem));
+                      setResetKey((key) => key + 1);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700"
+                  >
+                    <i className="fa-solid fa-rotate-left" aria-hidden="true" /> Reset to defaults
+                  </button>
+                </div>
+              </Card>
             </div>
 
-            {/* Calculation details */}
-            <Card className="mt-6" title="Calculation Details" icon="fa-solid fa-calculator">
-              <p className="mb-3 text-[11px] text-slate-400">
-                Computed values for the current inputs. Equations and references are on the Theory
-                &amp; References tab.
-              </p>
-              <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
-                {(
-                  [
-                    ["properties", "Joint Properties"],
-                    ["preload", "Preload Details"],
-                    ["details", "Detailed Calculations"],
-                  ] as Array<[TabId, string]>
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setTab(id)}
-                    className={
-                      tab === id
-                        ? "border-b-2 border-sky-500 px-4 py-2 text-xs font-semibold text-sky-600"
-                        : "border-b-2 border-transparent px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800"
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {result && model.input ? (
-                tab === "properties" ? (
-                  <PropertiesTab
-                    result={result}
-                    model={model}
-                    unitSystem={unitSystem}
-                    fastenerUnits={fastenerUnits}
-                    fastenerSystem={form.fastenerSystem}
-                  />
-                ) : tab === "preload" ? (
-                  <PreloadTab result={result} unitSystem={unitSystem} />
-                ) : (
-                  <DetailsTab
-                    result={result}
-                    model={model}
-                    unitSystem={unitSystem}
-                    fastenerUnits={fastenerUnits}
-                    fastenerSystem={form.fastenerSystem}
-                    target={target}
-                  />
-                )
-              ) : (
-                <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-                  {model.error}
+            {/* Joint visualization and strength check results. */}
+            <div className="space-y-6 lg:col-span-5">
+              <DiagramPanel title="Joint Diagram">
+                <div className="flex justify-center">
+                  {result && model.input ? (
+                    <JointDiagram
+                      config={form.config}
+                      d={size.d}
+                      headAF={size.headAF}
+                      headHeight={size.headHeight}
+                      nutHeight={size.nutHeight}
+                      washerEnabled={form.washerEnabled}
+                      washerOd={model.values.washerOd}
+                      washerT={model.values.washerT}
+                      hole={model.values.hole}
+                      t1={model.input.plate1.t}
+                      t2={model.input.plate2.t}
+                      grip={result.grip}
+                      engagement={result.engagement}
+                      boltLength={model.values.boltLength}
+                      threadLength={result.threadLength}
+                      system={unitSystem}
+                    />
+                  ) : (
+                    <div className="flex min-h-[320px] w-full items-center justify-center rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-600">
+                      Enter valid inputs to display the diagram.
+                    </div>
+                  )}
                 </div>
-              )}
-            </Card>
+              </DiagramPanel>
 
-            <p className="mt-4 text-center text-[11px] text-slate-400">
-              Results are for preliminary estimation. Verify against the governing code, bolt
-              supplier data and engineering judgment before using them in a final design.
+              <Card title="Key Results" icon="fa-solid fa-list-check">
+                {result ? (
+                  <ResultsPanel
+                    result={result}
+                    model={model}
+                    form={form}
+                    target={target}
+                    onTarget={(value) => update("targetFos", value)}
+                    unitSystem={unitSystem}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                    {model.error}
+                  </div>
+                )}
+              </Card>
+            </div>
+          </div>
+
+          {/* Detailed geometry, preload, and calculation result tabs. */}
+          <Card className="mt-6" title="Calculation Details" icon="fa-solid fa-calculator">
+            <p className="mb-3 text-[11px] text-slate-400">
+              Computed values for the current inputs. Equations and references are on the Theory
+              &amp; References tab.
             </p>
-          </>
-        )}
-      </main>
+            <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200">
+              {(
+                [
+                  ["properties", "Joint Properties"],
+                  ["preload", "Preload Details"],
+                  ["details", "Detailed Calculations"],
+                ] as Array<[TabId, string]>
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className={
+                    tab === id
+                      ? "border-b-2 border-sky-500 px-4 py-2 text-xs font-semibold text-sky-600"
+                      : "border-b-2 border-transparent px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800"
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {result && model.input ? (
+              tab === "properties" ? (
+                <PropertiesTab
+                  result={result}
+                  model={model}
+                  unitSystem={unitSystem}
+                  fastenerUnits={fastenerUnits}
+                  fastenerSystem={form.fastenerSystem}
+                />
+              ) : tab === "preload" ? (
+                <PreloadTab result={result} unitSystem={unitSystem} />
+              ) : (
+                <DetailsTab
+                  result={result}
+                  model={model}
+                  unitSystem={unitSystem}
+                  fastenerUnits={fastenerUnits}
+                  fastenerSystem={form.fastenerSystem}
+                  target={target}
+                />
+              )
+            ) : (
+              <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                {model.error}
+              </div>
+            )}
+          </Card>
+
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            Results are for preliminary estimation. Verify against the governing code, data sheets
+            and engineering judgment before using them in a final design.
+          </p>
+        </>
+      ) : (
+        <>
+          {/* Theory tab with methodology and references. */}
+          <Theory />
+        </>
+      )}
+    </CalculatorPageShell>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Theory and references
+// ---------------------------------------------------------------------------------------------
+
+const theoryNomenclature: Array<[string, string]> = [
+  [String.raw`d, D`, "Major (nominal) thread diameter"],
+  [String.raw`p, n`, "Metric pitch; imperial threads per inch, with p = 1/n"],
+  [String.raw`d_2, E`, "Thread pitch diameter"],
+  [String.raw`d_3, d_r`, "External thread minor (root) diameter"],
+  [String.raw`D_1`, "Internal thread minor diameter"],
+  [String.raw`A_t, A_d`, "Tensile stress area; major-diameter shank area"],
+  [String.raw`S_p, S_y, S_u`, "Bolt proof, yield and ultimate strength"],
+  [String.raw`E_b, E_i`, "Bolt modulus; modulus of member layer i"],
+  [String.raw`t_1, t_2, t_w`, "Plate 1, plate 2 and washer thickness"],
+  [String.raw`l, l_{eff}`, "Grip length; effective grip used for stiffness"],
+  [String.raw`L, L_T`, "Bolt length under the head; threaded length"],
+  [String.raw`l_d, l_t`, "Unthreaded and threaded bolt length within the grip"],
+  [String.raw`k_b, k_m, C`, "Bolt stiffness, member stiffness and joint constant"],
+  [String.raw`F_p, F_i`, "Proof load; preload"],
+  [String.raw`P, V`, "External tensile load; shear load on the bolt"],
+  [String.raw`F_b, F_m`, "Bolt force; remaining clamp force"],
+  [String.raw`K, T`, "Nut factor; tightening torque"],
+  [String.raw`s`, "Preload variation as a fraction of nominal preload"],
+  [String.raw`L_e`, "Thread engagement length"],
+  [String.raw`D_w`, "Bearing diameter under head or nut"],
+  [String.raw`\mu`, "Friction coefficient for slip resistance"],
+];
+
+const boltedJointReferences: Array<[string, string]> = [
+  ["Shigley's Mechanical Engineering Design (Budynas & Nisbett), Chapter 8", "Bolt and member stiffness, joint constant, preload, separation and proof-strength checks; Tables 8-9 (SAE grades), 8-11 (ISO classes) and 8-15 (torque coefficients)."],
+  ["ISO 724 and ISO 261", "Metric thread basic dimensions: pitch, pitch diameter and minor diameters."],
+  ["ISO 898-1", "Mechanical properties of carbon and alloy steel bolts, classes 4.6 to 12.9, and the metric tensile stress area."],
+  ["ASME B1.1", "Unified inch screw threads, UNC and UNF: basic dimensions and tensile stress area."],
+  ["SAE J429; ASTM F3125 (A325, A490)", "Inch bolt grades with size-dependent proof, yield and tensile strength."],
+  ["ISO 273, ISO 7089, ISO 4032, ISO 4017", "Metric clearance holes, plain washers, hex nuts and hex bolts."],
+  ["ASME B18.2.1, B18.2.2, B18.22.1", "Inch hex bolts, hex nuts and flat washers."],
+  ["Machinery's Handbook (Industrial Press)", "Unified and metric thread dimensions, and thread-stripping shear area equations."],
+  ["Bickford, An Introduction to the Design and Behavior of Bolted Joints", "Preload scatter by tightening method, nut factors and thread-stripping behavior."],
+  ["VDI 2230 Part 1", "Systematic calculation of highly stressed bolted joints. A cross-reference only; its procedure is not implemented here."],
+  ["CSA G40.21; ASTM A36, A572, A514 / A709-100; SSAB Quard data sheets", "Plate material strengths used in the material list."],
+];
+
+const theoryEquation = (expression: string) => <Equation expression={expression} />;
+
+function Theory() {
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <Card>
+        <div className="space-y-6">
+          <div>
+            <h2 className="mb-2 text-lg font-bold text-slate-900">Bolted Joint Analysis Methodology</h2>
+            <p className="text-sm leading-relaxed text-slate-600">
+              This calculator checks one preloaded bolt under static loading using the method in Shigley&apos;s Mechanical Engineering Design (Chapter 8):
+              the external tension is shared between the bolt and the clamped members through the joint constant C, and the bolt, threads and plates are
+              then checked against yield, separation, stripping, pull-through, bearing and shear. All formulas are evaluated in SI units internally;
+              the unit toggle and the fastener-system toggle only change how values are entered and displayed.
+            </p>
+          </div>
+          <hr className="border-slate-200" />
+
+          <TheorySection title="1. Thread geometry from major diameter and pitch" description="Both systems use the same 60° thread profile, so the pitch diameter and the internal minor diameter are identical in form. The formulas differ in how the root of the external thread is taken, which changes the tensile stress area. Every diameter and the stress area follow from the major diameter and the pitch alone.">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <TheoryPanel label="Metric — ISO 724, ISO 898-1 (pitch p, mm)">
+                {theoryEquation(String.raw`d_2 = d - 0.649519\,p`)}
+                {theoryEquation(String.raw`d_3 = d - 1.226869\,p`)}
+                {theoryEquation(String.raw`D_1 = d - 1.082532\,p`)}
+                {theoryEquation(String.raw`A_t = \frac{\pi}{4}\left(\frac{d_2 + d_3}{2}\right)^2 = \frac{\pi}{4}\left(d - 0.938194\,p\right)^2`)}
+              </TheoryPanel>
+              <TheoryPanel label="Imperial — ASME B1.1, UNC / UNF (n threads per inch)">
+                {theoryEquation(String.raw`p = \frac{1}{n}`)}
+                {theoryEquation(String.raw`E = D - \frac{0.649519}{n}`)}
+                {theoryEquation(String.raw`d_r = D - \frac{1.299038}{n}`)}
+                {theoryEquation(String.raw`D_1 = D - \frac{1.082532}{n}`)}
+                {theoryEquation(String.raw`A_t = \frac{\pi}{4}\left(\frac{E + d_r}{2}\right)^2 = 0.7854\left(D - \frac{0.9743}{n}\right)^2`)}
+              </TheoryPanel>
+            </div>
+            <TheoryPanel label="Both systems">{theoryEquation(String.raw`A_d = \frac{\pi d^2}{4}`)}</TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="2. Thread length of the bolt" description="Standard thread length for hex bolts, used to split the grip into unthreaded and threaded parts.">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <TheoryPanel label="Metric (mm)">{theoryEquation(String.raw`L_T = \begin{cases} 2d + 6 & L \le 125 \\ 2d + 12 & 125 < L \le 200 \\ 2d + 25 & L > 200 \end{cases}`)}</TheoryPanel>
+              <TheoryPanel label="Imperial (in)">{theoryEquation(String.raw`L_T = \begin{cases} 2D + \tfrac{1}{4} & L \le 6 \\ 2D + \tfrac{1}{2} & L > 6 \end{cases}`)}</TheoryPanel>
+            </div>
+          </TheorySection>
+
+          <TheorySection title="3. Grip, bolt stiffness and member stiffness" description="For a bolt and nut the grip is the full stack. For a tapped hole Shigley's effective grip adds half the tapped plate thickness, limited to d/2.">
+            <TheoryPanel label="Grip length">
+              {theoryEquation(String.raw`l = t_1 + t_2 + 2\,t_w \quad (\text{bolt + nut})`)}
+              {theoryEquation(String.raw`h = t_1 + t_w, \qquad l_{eff} = \begin{cases} h + t_2/2 & t_2 < d \\ h + d/2 & t_2 \ge d \end{cases} \quad (\text{tapped hole})`)}
+              {theoryEquation(String.raw`l_d = \min\!\big(\max(L - L_T,\,0),\,l\big), \qquad l_t = l - l_d`)}
+            </TheoryPanel>
+            <TheoryPanel label="Bolt stiffness (Shigley, Ch. 8)">{theoryEquation(String.raw`k_b = \frac{A_d\,A_t\,E_b}{A_d\,l_t + A_t\,l_d}`)}</TheoryPanel>
+            <TheoryPanel label="Member stiffness (frustum method, 30° half-angle)">
+              {theoryEquation(String.raw`k_i = \frac{0.5774\,\pi\,E_i\,d}{\ln\dfrac{\left(1.155\,t_i + D - d\right)\left(D + d\right)}{\left(1.155\,t_i + D + d\right)\left(D - d\right)}}`)}
+              {theoryEquation(String.raw`k_m = \left(\sum_i \frac{1}{k_i}\right)^{-1}`)}
+            </TheoryPanel>
+            <p className="text-xs leading-relaxed text-slate-600">
+              Two opposing pressure cones start at the head and nut bearing diameters D<sub>w</sub> and meet at mid-grip. The cones are cut at each plate and washer
+              boundary, so each layer is one frustum with its own modulus E<sub>i</sub>, and D is the cone diameter at the narrow end of that frustum (D<sub>w</sub> + 1.155·z at depth z).
+              Frustum stiffnesses add in series, which handles dissimilar plates and washers.
+            </p>
+            <TheoryPanel label="Joint constant">{theoryEquation(String.raw`C = \frac{k_b}{k_b + k_m}`)}</TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="4. Preload" description="Target preload as a percentage of proof load (Shigley suggests 75% for reusable and 90% for permanent joints), a specified force, or a tightening torque with nut factor K. Min and max preload apply the selected variation s.">
+            <TheoryPanel>
+              {theoryEquation(String.raw`F_p = S_p\,A_t`)}
+              {theoryEquation(String.raw`F_i = \frac{\%}{100}\,F_p \quad\text{or}\quad F_i = \frac{T}{K\,d}`)}
+              {theoryEquation(String.raw`T = K\,F_i\,d`)}
+              {theoryEquation(String.raw`F_{i,\min} = (1 - s)\,F_i, \qquad F_{i,\max} = (1 + s)\,F_i`)}
+            </TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="5. Bolt load and tensile yield"><TheoryPanel>
+            {theoryEquation(String.raw`F_b = F_i + C\,P`)}
+            {theoryEquation(String.raw`n_y = \frac{S_y\,A_t}{F_b}`)}
+          </TheoryPanel></TheorySection>
+          <TheorySection title="6. Joint separation"><TheoryPanel>
+            {theoryEquation(String.raw`F_m = F_i - (1 - C)\,P`)}
+            {theoryEquation(String.raw`n_0 = \frac{F_i}{(1 - C)\,P}`)}
+          </TheoryPanel></TheorySection>
+
+          <TheorySection title="7. Thread stripping" description="Shear areas of the engaged threads from the basic thread profile (Machinery's Handbook). The thread density is n = 1/p for metric threads and n = threads per inch for imperial threads, so the same expressions apply to both. Shear strength is taken as 0.6 times the ultimate strength of the weaker material, and the check uses the maximum bolt force.">
+            <TheoryPanel>
+              {theoryEquation(String.raw`A_{s,ext} = \pi\,n\,L_e\,D_1\left[\frac{1}{2n} + 0.57735\,(d_2 - D_1)\right]`)}
+              {theoryEquation(String.raw`A_{s,int} = \pi\,n\,L_e\,d\left[\frac{1}{2n} + 0.57735\,(d - d_2)\right]`)}
+              {theoryEquation(String.raw`F_{strip} = 0.6\,S_u\,A_s, \qquad n_{strip} = \frac{F_{strip}}{F_{b,\max}}`)}
+            </TheoryPanel>
+            <p className="text-xs leading-relaxed text-slate-600">
+              The external thread uses the bolt S<sub>u</sub>. The internal thread uses the nut S<sub>u</sub> (matched to the bolt unless overwritten) or, for a tapped hole, the S<sub>u</sub> of plate 2.
+              For a tapped hole the default engagement is the length that lets the internal threads carry the full bolt strength, limited to between 1d and 3d and to the plate thickness:
+            </p>
+            <TheoryPanel>{theoryEquation(String.raw`L_{e,req} = \frac{S_{u,bolt}\,A_t}{0.6\,S_{u,int}\,A_{s,int}/L_e}`)}</TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="8. Pull-through and plate bearing" description="Pull-through is the shear of a plug the size of the washer (or head / nut across flats) through the plate. Bearing compares the shear load with the yield bearing strength of the weaker plate.">
+            <TheoryPanel>
+              {theoryEquation(String.raw`F_{pt} = 0.6\,S_u\,\pi\,D_w\,t, \qquad n_{pt} = \frac{F_{pt}}{F_{b,\max}}`)}
+              {theoryEquation(String.raw`F_{br} = S_y\,d\,t, \qquad n_{br} = \frac{F_{br}}{V}`)}
+            </TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="9. Shear, slip and combined loading" description="The shear area A_s is A_t when the shear plane passes through the threads and A_d through the unthreaded shank. Slip uses the clamp force remaining at minimum preload. The combined check uses the von Mises stress at maximum bolt force.">
+            <TheoryPanel>
+              {theoryEquation(String.raw`n_{shear} = \frac{0.577\,S_y\,A_s}{V}`)}
+              {theoryEquation(String.raw`n_{slip} = \frac{\mu\,F_{m,\min}}{V}`)}
+              {theoryEquation(String.raw`\sigma_{vm} = \sqrt{\left(\frac{F_{b,\max}}{A_t}\right)^2 + 3\left(\frac{V}{A_s}\right)^2}, \qquad n = \frac{S_y}{\sigma_{vm}}`)}
+            </TheoryPanel>
+          </TheorySection>
+
+          <TheorySection title="10. Bolt strength properties">
+            <p className="text-xs leading-relaxed text-slate-600">
+              Metric property classes a.b follow ISO 898-1: nominal ultimate strength is 100·a MPa and nominal yield strength is 10·a·b MPa (class 10.9: 1000 and 900 MPa).
+              The calculator uses the minimum proof, yield and ultimate values tabulated in Shigley Table 8-11. Inch grades use Shigley Table 8-9 (SAE J429) and
+              ASTM F3125 (A325, A490), with the size breaks those standards define, for example Grade 5 above 1 in.
+            </p>
+          </TheorySection>
+
+          <TheorySection title="Nomenclature"><TheoryNomenclature entries={theoryNomenclature} /></TheorySection>
+          <TheorySection title="Assumptions and limits">
+            <ul className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-slate-600">
+              <li>One bolt in single shear, static loading only. Bolt patterns and fatigue are not included.</li>
+              <li>The external tensile load acts along the bolt axis and is split between bolt and members by C.</li>
+              <li>Yield checks use S<sub>y</sub>·A<sub>t</sub>. Residual torsion from tightening is neglected.</li>
+              <li>Thread-strip areas use basic (nominal) thread dimensions, not tolerance limits.</li>
+              <li>Quard 400 and 450 strengths are typical values; yield is not guaranteed in the supplier data sheet.</li>
+            </ul>
+          </TheorySection>
+          <TheorySection title="References"><TheoryReferences entries={boltedJointReferences} /></TheorySection>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -1254,6 +1147,7 @@ interface ResultRow {
   status: FosStatus | "info";
 }
 
+// Choose the governing factor-of-safety check and display every check with its status.
 function ResultsPanel({
   result,
   model,
@@ -1279,6 +1173,7 @@ function ResultsPanel({
   const clampOk =
     result.minClampForce > 0 && (requiredClamp <= 0 || result.minClampForce >= requiredClamp);
 
+  // Keep the rows in display order; the governing result is calculated separately below.
   const rows: ResultRow[] = [
     fos("Bolt tensile yield FOS — nominal preload", nominal.yieldFos),
     fos("Bolt tensile yield FOS — minimum preload", min.yieldFos),
@@ -1301,51 +1196,34 @@ function ResultsPanel({
     status: clampOk ? "pass" : "fail",
   });
 
+  // The governing check is the smallest finite FOS; clamp force is reported as a pass/fail check.
   const governing = rows.reduce<ResultRow | null>(
     (best, row) =>
       row.fos !== undefined &&
-      Number.isFinite(row.fos) &&
-      (best === null || (best.fos ?? Infinity) > row.fos)
+        Number.isFinite(row.fos) &&
+        (best === null || (best.fos ?? Infinity) > row.fos)
         ? row
         : best,
     null,
   );
-  const overall: FosStatus = rows.some((row) => row.status === "fail")
-    ? "fail"
-    : rows.some((row) => row.status === "warn")
-      ? "warn"
-      : "pass";
-  const banner =
-    overall === "pass"
-      ? "border-emerald-500/30 bg-emerald-500/10"
-      : overall === "warn"
-        ? "border-amber-500/30 bg-amber-500/10"
-        : "border-red-500/30 bg-red-500/10";
-
   return (
     <div className="space-y-4">
-      <div className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${banner}`}>
-        <div>
-          <div className="text-[11px] text-slate-500">Governing check</div>
-          <div className="text-sm font-bold text-slate-800">
-            {governing ? governing.label : "No loads applied"}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="font-mono text-lg font-bold text-slate-900">
-            {governing && governing.fos !== undefined ? formatFos(governing.fos) : "—"}
-          </div>
-          <StatusPill status={overall} />
-        </div>
-      </div>
+      <StatusBanner
+        FOS={governing?.fos ?? 0}
+        minimumFos={target}
+        rightTitle="Critical FOS"
+        rightText={governing?.label ?? "No loads applied"}
+        system={unitSystem}
+      />
 
       <div className="flex items-end justify-between gap-3">
         <p className="text-[11px] text-slate-400">
           Pass at or above the target FOS, warning between 1.0 and the target, fail below 1.0.
         </p>
         <div className="w-28 shrink-0">
-          <NumberField
+          <UnitInput
             label="Target FOS"
+            quantity="unitless"
             value={form.targetFos}
             onChange={onTarget}
             min={1}
@@ -1422,6 +1300,7 @@ function PropertiesTab({
   fastenerUnits: UnitSystem;
   fastenerSystem: FastenerSystem;
 }) {
+  // Format lengths in page units, while thread dimensions follow the selected fastener system.
   const len = (mm: number) =>
     `${formatSignificantFigures(fromBase(mm, "length", unitSystem), 4)} ${getUnitLabel("length", unitSystem)}`;
   const flen = (mm: number) =>
@@ -1475,6 +1354,7 @@ function PropertiesTab({
 }
 
 function PreloadTab({ result, unitSystem }: { result: BoltedJointResult; unitSystem: UnitSystem }) {
+  // Show nominal preload alongside the min/nominal/max values used for variation checks.
   const f = (value: number) =>
     `${formatSignificantFigures(fromBase(value, "kforce", unitSystem), 4)} ${getUnitLabel("kforce", unitSystem)}`;
   const cols = [result.cases.min, result.cases.nominal, result.cases.max];
@@ -1555,6 +1435,7 @@ interface DetailRow {
   value: string;
 }
 
+// Assemble the full calculation trace into labeled sections for the detailed-results tab.
 function DetailsTab({
   result,
   model,
@@ -1583,6 +1464,7 @@ function DetailsTab({
   const input = model.input;
   const isNut = input?.config === "bolt_nut";
 
+  // Each section lists the quantities and intermediate results used by the engineering model.
   const sections: Array<{ title: string; rows: DetailRow[] }> = [
     {
       title: `Thread geometry (${fastenerSystem === "metric" ? "metric, ISO 724" : "imperial, ASME B1.1"})`,

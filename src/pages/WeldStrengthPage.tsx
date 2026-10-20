@@ -36,15 +36,15 @@ const initialInput: WeldInput = {
   h: 0.25,
   b: 6.0,
   d: 8.0,
-  Fx: 1200,
-  Fy: -4500,
+  Fx: 1.2,
+  Fy: -4.5,
   Fz: 0,
   xL: 3.0,
   yL: 4.0,
   zL: 0,
   Mx: 0,
   My: 0,
-  Mz: 18000,
+  Mz: 18,
   tauAllow: 21000,
   xCustom: 3.0,
   yCustom: 4.0,
@@ -159,7 +159,6 @@ export function WeldStrengthPage() {
                 <>
                   <StatusBanner
                     FOS={result.factorOfSafety}
-                    safe={result.safe}
                     maxValue={result.maxStress}
                     maxQuantity="stress"
                     hotspotLabel="Max Hotspot Stress (τmax)"
@@ -176,6 +175,11 @@ export function WeldStrengthPage() {
 
           {/* Detailed stress breakdown for each hotspot/evaluation point. */}
           {result ? <HotspotTable result={result} system={unitSystem} /> : null}
+
+          <p className="mt-4 text-center text-[11px] text-slate-400">
+            Results are for preliminary estimation. Verify against the governing code, data sheets
+            and engineering judgment before using them in a final design.
+          </p>
         </>
       ) : <Theory />}
     </CalculatorPageShell>
@@ -223,9 +227,9 @@ function LoadSummary({ result, system }: { result: NonNullable<ReturnType<typeof
         <table className="w-full min-w-[520px] overflow-hidden rounded-lg border border-slate-100 text-center text-xs font-mono">
           <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600"><tr><th className="w-1/3 px-3 py-2 text-left">Direction</th><th className="w-1/3 px-3 py-2">Forces</th><th className="w-1/3 px-3 py-2">Moments</th></tr></thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            <LoadRow direction="X" force={displayResultValue(result.load.fx, "force", system, 0)} moment={displayResultValue(result.load.mx, "moment", system, 0)} />
-            <LoadRow direction="Y" force={displayResultValue(result.load.fy, "force", system, 0)} moment={displayResultValue(result.load.my, "moment", system, 0)} />
-            <LoadRow direction="Z" force={displayResultValue(result.load.fz, "force", system, 0)} moment={displayResultValue(result.load.mz, "moment", system, 0)} />
+            <LoadRow direction="X" force={displayResultValue(result.load.fx, "kforce", system, 2)} moment={displayResultValue(result.load.mx, "kmoment", system, 2)} />
+            <LoadRow direction="Y" force={displayResultValue(result.load.fy, "kforce", system, 2)} moment={displayResultValue(result.load.my, "kmoment", system, 2)} />
+            <LoadRow direction="Z" force={displayResultValue(result.load.fz, "kforce", system, 2)} moment={displayResultValue(result.load.mz, "kmoment", system, 2)} />
           </tbody>
         </table>
       </div>
