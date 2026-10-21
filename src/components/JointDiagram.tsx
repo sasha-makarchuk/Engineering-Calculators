@@ -112,7 +112,7 @@ export function JointDiagram(props: JointDiagramProps) {
   );
 
   return (
-    <svg viewBox={`0 0 ${VW} ${VH}`} className="h-auto w-full max-w-2xl" role="img" aria-label="Section view of the bolted joint with live dimensions">
+    <svg data-export-diagram="bolted-joint" viewBox={`0 0 ${VW} ${VH}`} className="h-auto w-full max-w-2xl" role="img" aria-label="Section view of the bolted joint with live dimensions">
       <defs>
         <marker id="bj-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill={COLORS.dim} />

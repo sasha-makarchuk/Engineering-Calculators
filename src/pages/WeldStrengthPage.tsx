@@ -1,6 +1,7 @@
 // Weld calculator imports React state/effects, reusable UI components, and the engineering engine.
 import { useState } from "react";
 import { Card } from "../components/Card";
+import { MetricTile } from "../components/MetricTile";
 import { CalculatorPageShell } from "../components/CalculatorPageShell";
 import { DiagramPanel } from "../components/DiagramPanel";
 import { LoadsInputCard } from "../components/LoadsInputCard";
@@ -11,10 +12,12 @@ import { TheoryNomenclature, TheoryPanel, TheoryReferences, TheorySection } from
 import { SelectInput } from "../components/Dropdown";
 import { WeldDiagram } from "../components/WeldDiagram";
 import { StatusBanner } from "../components/StatusBanner";
+import { ReportExportActions } from "../components/ReportExportActions";
 import { useUnitSystem } from "../components/units/UnitContext";
 import { useCalculationResult } from "../hooks/useCalculationResult";
 import { useCurrentInput } from "../hooks/useCurrentInput";
 import { displayResultValue, calculateWeldGroup, formatResultNumber, type WeldInput, type WeldPattern, weldUnitSchema } from "../engineering/weldGroup";
+import { createWeldReportData, downloadWorkbook, getReportDiagramDataUrl, openPdfReport } from "../engineering/engineeringReport";
 import { fromBase, getUnitLabel, toBase, convertFromState, type UnitSystem } from "../engineering/units";
 
 // Dropdown display data for each supported weld pattern.
@@ -72,6 +75,7 @@ export function WeldStrengthPage() {
 
   const result = resultState.result;
   const lengthUnit = getUnitLabel("length", unitSystem);
+  const reportData = result ? createWeldReportData(currentInput, result, unitSystem) : null;
 
   return (
     <CalculatorPageShell
@@ -80,6 +84,7 @@ export function WeldStrengthPage() {
       subtitle="Analysis & Hotspot Efficiency Calculator"
       pageTab={pageTab}
       setPageTab={setPageTab}
+      tabActions={pageTab === "calc" && result && reportData ? <ReportExportActions onPdfExport={() => openPdfReport(reportData, getReportDiagramDataUrl("weld"))} onExcelExport={async () => downloadWorkbook(reportData, await getReportDiagramDataUrl("weld"))} /> : null}
     >
       {pageTab === "calc" ? (
         <>
@@ -198,14 +203,14 @@ function SectionProperties({ result, system }: { result: NonNullable<ReturnType<
   return (
     <Card title="Calculated Section Properties" icon="fa-solid fa-calculator">
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 text-center font-mono sm:grid-cols-3">
-          <Metric label="Throat Thickness (t)" value={`${formatResultNumber(fromBase(result.throat, "length", system), 4)} ${lengthUnit}`} />
-          <Metric label="Centroid (x̄, ȳ)" value={`(${formatResultNumber(fromBase(result.geometry.centroidX, "length", system), 2)}, ${formatResultNumber(fromBase(result.geometry.centroidY, "length", system), 2)}) ${lengthUnit}`} />
-          <Metric label="Total Weld Area (Aw)" value={`${formatResultNumber(result.area * areaScale, 2)} ${areaUnit}`} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricTile align="center" label="Throat Thickness (t)" value={`${formatResultNumber(fromBase(result.throat, "length", system), 4)} ${lengthUnit}`} />
+          <MetricTile align="center" label="Centroid (x̄, ȳ)" value={`(${formatResultNumber(fromBase(result.geometry.centroidX, "length", system), 2)}, ${formatResultNumber(fromBase(result.geometry.centroidY, "length", system), 2)}) ${lengthUnit}`} />
+          <MetricTile align="center" label="Total Weld Area (Aw)" value={`${formatResultNumber(result.area * areaScale, 2)} ${areaUnit}`} />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] overflow-hidden rounded-lg border border-slate-100 text-center text-xs font-mono">
-            <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600"><tr><th className="px-3 py-2 text-left">Property Type</th><th className="px-3 py-2">Unit Property (per unit throat)</th><th className="px-3 py-2">Total Actual Property</th></tr></thead>
+          <table className="data-table min-w-[640px] border-slate-100 text-center font-mono">
+            <thead className="data-table-header"><tr><th className="px-3 py-2 text-left">Property Type</th><th className="px-3 py-2">Unit Property (per unit throat)</th><th className="px-3 py-2">Total Actual Property</th></tr></thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               <tr><td className="px-3 py-2 text-left font-sans font-semibold text-slate-600">Length / Area</td><td className="px-3 py-2 text-slate-800">{formatResultNumber(fromBase(result.geometry.unitLength, "length", system), 2)} {lengthUnit}</td><td className="px-3 py-2 font-bold text-slate-900">{formatResultNumber(result.area * areaScale, 2)} {areaUnit}</td></tr>
               <tr><td className="px-3 py-2 text-left font-sans font-semibold text-slate-600">Inertia Ix</td><td className="px-3 py-2 text-slate-800">{formatResultNumber(result.geometry.ixUnit * thirdScale, 1)} {thirdUnit}</td><td className="px-3 py-2 font-bold text-slate-900">{formatResultNumber(result.ix * fourthScale, 1)} {fourthUnit}</td></tr>
@@ -224,8 +229,8 @@ function LoadSummary({ result, system }: { result: NonNullable<ReturnType<typeof
   return (
     <Card title="Total Applied Loading" icon="fa-solid fa-calculator">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] overflow-hidden rounded-lg border border-slate-100 text-center text-xs font-mono">
-          <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600"><tr><th className="w-1/3 px-3 py-2 text-left">Direction</th><th className="w-1/3 px-3 py-2">Forces</th><th className="w-1/3 px-3 py-2">Moments</th></tr></thead>
+        <table className="data-table min-w-[520px] border-slate-100 text-center font-mono">
+          <thead className="data-table-header"><tr><th className="w-1/3 px-3 py-2 text-left">Direction</th><th className="w-1/3 px-3 py-2">Forces</th><th className="w-1/3 px-3 py-2">Moments</th></tr></thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             <LoadRow direction="X" force={displayResultValue(result.load.fx, "kforce", system, 2)} moment={displayResultValue(result.load.mx, "kmoment", system, 2)} />
             <LoadRow direction="Y" force={displayResultValue(result.load.fy, "kforce", system, 2)} moment={displayResultValue(result.load.my, "kmoment", system, 2)} />
@@ -242,11 +247,6 @@ function LoadRow({ direction, force, moment }: { direction: string; force: strin
   return <tr><td className="px-3 py-2 text-left font-sans font-semibold text-slate-600">{direction}</td><td className="px-3 py-2 text-slate-800">{force}</td><td className="px-3 py-2 font-bold text-slate-900">{moment}</td></tr>;
 }
 
-// Reusable small result tile.
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5"><div className="font-sans text-[11px] text-slate-500">{label}</div><div className="mt-0.5 text-sm font-bold text-slate-800">{value}</div></div>;
-}
-
 // Detailed node-by-node stress-component table.
 function HotspotTable({ result, system }: { result: NonNullable<ReturnType<typeof calculateWeldGroup>>; system: "imperial" | "si" }) {
   const stressUnit = getUnitLabel("stress", system);
@@ -255,15 +255,15 @@ function HotspotTable({ result, system }: { result: NonNullable<ReturnType<typeo
   return (
     <Card className="mt-6" title="Hotspot Node Stress Breakdown" icon="fa-solid fa-list-check">
       <div className="overflow-x-auto">
-        <table className="min-w-[1080px] w-full overflow-hidden rounded-xl border border-slate-100 text-left text-xs font-mono">
-          <thead className="border-b border-slate-200 bg-slate-100 text-[10px] tracking-wider text-slate-600">
+        <table className="data-table min-w-[1080px] rounded-xl border-slate-100 text-left font-mono">
+          <thead className="data-table-header border-b border-slate-200">
             <tr>
               <th rowSpan={2} className="border-r border-slate-200 px-3 py-2.5">Point</th>
               <th rowSpan={2} className="border-r border-slate-200 px-3 py-2.5 text-center">Coords (x, y)</th>
-              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Primary Shear (τ')</th>
-              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Secondary Shear (τ'')</th>
-              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Total Shear (τ)</th>
-              <th rowSpan={2} className="border-b border-r border-slate-200 px-3 py-2.5 text-center">Max τ</th>
+              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Primary Shear ({"\u03C4"}')</th>
+              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Secondary Shear ({"\u03C4"}'')</th>
+              <th colSpan={3} className="border-b border-r border-slate-200 px-3 py-2 text-center">Total Shear ({"\u03C4"})</th>
+              <th rowSpan={2} className="border-b border-r border-slate-200 px-3 py-2.5 text-center">Max {"\u03C4"}</th>
               <th rowSpan={2} className="border-b border-slate-200 px-3 py-2.5 text-center">Status</th>
             </tr>
             <tr className="border-b border-slate-200">

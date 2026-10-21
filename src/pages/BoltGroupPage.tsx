@@ -1,6 +1,7 @@
 // Bolt-group calculator imports React state, shared UI components, and the engineering engine.
 import { useMemo, useState, type ReactNode } from "react";
 import { Card } from "../components/Card";
+import { MetricTile } from "../components/MetricTile";
 import { CalculatorPageShell } from "../components/CalculatorPageShell";
 import { DiagramPanel } from "../components/DiagramPanel";
 import { Equation } from "../components/Equation";
@@ -38,6 +39,8 @@ import {
 } from "../data/fasteners";
 import { SelectInput } from "../components/Dropdown";
 import { useCalculationResult } from "../hooks/useCalculationResult";
+import { ReportExportActions } from "../components/ReportExportActions";
+import { createBoltGroupReportData, downloadWorkbook, getReportDiagramDataUrl, openPdfReport } from "../engineering/engineeringReport";
 
 // Dropdown display data for each supported bolt pattern.
 const patternOptions: Array<{ value: PatternKind; label: string }> = [
@@ -109,49 +112,16 @@ const initialBolts: GroupBolt[] = [
   {
     id: 1,
     sizeId: "M10x1.5",
-    x: -75,
-    y: -100,
-  },
-  {
-    id: 2,
-    sizeId: "M10x1.25",
-    x: 75,
-    y: -100,
-  },
-
-  // Middle Row (y = 0 mm)
-  {
-    id: 3,
-    sizeId: "M10x1.5",
-    x: -75,
+    x: 0,
     y: 0,
-  },
-  {
-    id: 4,
-    sizeId: "M16x2",
-    x: 75,
-    y: 0,
-  },
-
-  // Top Row (y = +100 mm)
-  {
-    id: 5,
-    sizeId: "M10x1.5",
-    x: -75,
-    y: 100,
-  },
-  {
-    id: 6,
-    sizeId: "M10x1.5",
-    x: 75,
-    y: 100,
+    patternId: 1,
   },
 ];
 
 const initialPattern: BoltPattern = {
-  type: "rectangle",
-  cx: 5,
-  cy: 5,
+  type: "single",
+  cx: 0,
+  cy: 0,
   cols: 3,
   rows: 2,
   dx: 10,
@@ -178,7 +148,7 @@ const initialLoads: BaseLoadInput = {
 // Default example inputs displayed when the calculator opens.
 const initialInput: BoltGroupInput = {
   pattern: initialPattern,
-  patternGroups: [],
+  patternGroups: [{ id: 1, pattern: initialPattern, boltIds: [1] }],
   bolts: initialBolts,
   unitSystem: "imperial",
   ...initialLoads
@@ -200,6 +170,7 @@ export function BoltGroupPage() {
   const resultState = useCalculationResult(currentInput, calculateBoltGroup);
 
   const result = resultState.result;
+  const reportData = result ? createBoltGroupReportData(currentInput, result, unitSystem) : null;
 
   // Generic typed updater keeps the field name and value type connected.
   const update = <K extends keyof BoltGroupInput>(field: K, value: BoltGroupInput[K]) => {
@@ -207,25 +178,70 @@ export function BoltGroupPage() {
   };
 
   const updateBolt = (id: number, patch: Partial<BoltRow>) => {
-    const patternId = input.bolts.find((bolt) => bolt.id === id)?.patternId;
-    if (editingPatternId === patternId) setEditingPatternId(null);
+    setEditingPatternId(null);
     setInput((previous) => {
       const editedBolt = previous.bolts.find((bolt) => bolt.id === id);
-      const detachedPatternId = editedBolt?.patternId;
+      if (!editedBolt) return previous;
+
+      const updatedBolt = {
+        ...editedBolt,
+        ...patch,
+        x: patch.x ?? editedBolt.x,
+        y: patch.y ?? editedBolt.y,
+      };
+      if (
+        updatedBolt.sizeId === editedBolt.sizeId &&
+        updatedBolt.x === editedBolt.x &&
+        updatedBolt.y === editedBolt.y
+      ) return previous;
+
+      const existingGroup = previous.patternGroups.find((group) => group.id === editedBolt.patternId);
+      const isSingleBoltPattern = existingGroup?.pattern.type === "single" && existingGroup.boltIds.length === 1;
+
+      // Keep an already-split bolt in its single-bolt pattern so later edits remain grouped.
+      if (isSingleBoltPattern && existingGroup) {
+        return {
+          ...previous,
+          bolts: previous.bolts.map((bolt) => bolt.id === id ? updatedBolt : bolt),
+          patternGroups: previous.patternGroups.map((group) => group.id === existingGroup.id
+            ? { ...group, pattern: { ...group.pattern, cx: updatedBolt.x, cy: updatedBolt.y } }
+            : group),
+        };
+      }
+
+      const sourceBolts = existingGroup
+        ? existingGroup.boltIds
+          .map((boltId) => previous.bolts.find((bolt) => bolt.id === boltId))
+          .filter((bolt): bolt is GroupBolt => bolt !== undefined)
+        : [editedBolt];
+      const firstPatternId = Math.max(0, ...previous.patternGroups.map((group) => group.id)) + 1;
+      const splitPatterns = sourceBolts.map((bolt, index): BoltPatternGroup => {
+        const splitBolt = bolt.id === id ? updatedBolt : bolt;
+        const patternId = firstPatternId + index;
+        return {
+          id: patternId,
+          pattern: { ...previous.pattern, type: "single", cx: splitBolt.x, cy: splitBolt.y },
+          boltIds: [splitBolt.id],
+        };
+      });
+      const splitPatternByBoltId = new Map<number, BoltPatternGroup>();
+      for (const group of splitPatterns) {
+        const boltId = group.boltIds[0];
+        if (boltId !== undefined) splitPatternByBoltId.set(boltId, group);
+      }
+      const sourceBoltIds = new Set(sourceBolts.map((bolt) => bolt.id));
+      const bolts = previous.bolts.map((bolt) => {
+        if (!sourceBoltIds.has(bolt.id)) return bolt;
+        const splitPattern = splitPatternByBoltId.get(bolt.id);
+        const splitBolt = bolt.id === id ? updatedBolt : bolt;
+        return splitPattern ? { ...splitBolt, patternId: splitPattern.id } : splitBolt;
+      });
+      const patternGroups = previous.patternGroups.filter((group) => group.id !== existingGroup?.id);
+
       return {
         ...previous,
-        // An individual edit detaches the entire generated pattern; its other bolts remain editable.
-        bolts: previous.bolts.map((row) => {
-          const detached = detachedPatternId !== undefined && row.patternId === detachedPatternId
-            ? { ...row, patternId: undefined }
-            : row;
-          if (row.id !== id) return detached;
-          const updated = { ...detached, ...patch };
-          return { ...updated, x: updated.x ?? 0, y: updated.y ?? 0 };
-        }),
-        patternGroups: detachedPatternId === undefined
-          ? previous.patternGroups
-          : previous.patternGroups.filter((pattern) => pattern.id !== detachedPatternId),
+        bolts,
+        patternGroups: [...patternGroups, ...splitPatterns],
       };
     });
   };
@@ -279,7 +295,7 @@ export function BoltGroupPage() {
         patternGroups: [...previous.patternGroups, group],
       };
     });
-    setEditingPatternId(patternId);
+    setEditingPatternId(null);
   };
 
   const removeBolt = (id: number) => {
@@ -350,6 +366,7 @@ export function BoltGroupPage() {
       subtitle="In-plane forces and moment on a bolt pattern, elastic method"
       pageTab={pageTab}
       setPageTab={setPageTab}
+      tabActions={pageTab === "calc" && reportData ? <ReportExportActions onPdfExport={() => openPdfReport(reportData, getReportDiagramDataUrl("bolt-group"))} onExcelExport={async () => downloadWorkbook(reportData, await getReportDiagramDataUrl("bolt-group"))} /> : null}
     >
       {pageTab === "calc" ? (
         <>
@@ -373,139 +390,141 @@ export function BoltGroupPage() {
                 ) : null}
               </Card>
 
-              {/* Geometry inputs: pattern selection and dimensions. */}
-              <Card title="Bolt Coordinates" icon="fa-solid fa-shapes">
-                <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-1" >
-                  <div className="space-y-4" >
-                    <div className="grid grid-cols-2 gap-3 items-end" >
-                      <SelectInput
-                        label="Select bolt pattern"
-                        value={currentInput.pattern.type}
-                        options={patternOptions}
-                        onChange={(value) => updatePattern("type", value)}
-                      />
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={appendPatternBolts}
-                          disabled={input.bolts.length >= MAX_BOLTS}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          + Add pattern
-                        </button>
-                        <span className="text-[11px] text-slate-400">
-                          {input.bolts.length} of {MAX_BOLTS} bolts
-                        </span>
-                      </div>
+              {/* Pattern generation and editing controls. */}
+              <Card title="Bolt Pattern" icon="fa-solid fa-shapes">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <SelectInput
+                      label="Select bolt pattern"
+                      value={currentInput.pattern.type}
+                      options={patternOptions}
+                      onChange={(value) => updatePattern("type", value)}
+                    />
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={appendPatternBolts}
+                        disabled={input.bolts.length >= MAX_BOLTS}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        + Add pattern
+                      </button>
+                      <span className="text-[11px] text-slate-400">
+                        {input.bolts.length} of {MAX_BOLTS} bolts
+                      </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3" >
-                      {PATTERN_CONFIGS.find((p) => p.value === currentInput.pattern.type)?.fields.map((field) => {
-                        const val = currentInput.pattern[field.key as keyof BoltPattern];
-
-                        return (
-                          <UnitInput
-                            key={field.key}
-                            label={field.label}
-                            quantity={field.quantity}
-                            value={(val as number) ?? 0}
-                            onChange={(v) => updatePattern(field.key as keyof BoltPattern, v ?? 0)}
-                            step={unitSystem === "imperial" ? field.step : field.stepSI}
-                          />
-                        );
-                      })}
-                    </div>
-                    {input.patternGroups.length > 0 ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50">
-                        <h3 className="text-xs font-semibold text-slate-700 p-2">Added patterns</h3>
-                        {input.patternGroups.map((group, index) => (
-                          <div
-                            key={group.id}
-                            className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-xs ${group.id === editingPatternId ? "bg-violet-50" : "bg-white"
-                              }`}
-                          >                            <span className="text-slate-700">
-                              Pattern {index + 1}: {PATTERN_CONFIGS.find((item) => item.value === group.pattern.type)?.label ?? group.pattern.type}
-                              <span className="ml-1 text-slate-400">(Bolts: {group.boltIds.join(",")})</span>
-                            </span>
-                            <div className="flex shrink-0 gap-2">
-                              {editingPatternId === group.id ? (
-                                <button type="button" onClick={() => setEditingPatternId(null)} className="shrink-0 font-semibold hover:text-sky-950">Done</button>
-                              ) : editingPatternId === null ? (
-                                <>
-                                  <button type="button" onClick={() => editPattern(group)} className="font-semibold text-sky-700 hover:text-sky-900">Edit</button>
-                                  <button type="button" onClick={() => removePattern(group)} className="font-semibold text-red-600 hover:text-red-800">Remove</button>
-                                </>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
-                  <div className="overflow-hidden rounded-lg">
-                    <div className="max-h-[390px] overflow-auto">
-                      <table className="w-full min-w-[360px] border-collapse rounded-lg text-left text-xs">
-                        <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
-                          <tr>
-                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">#</th>
-                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">Size</th>
-                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">x</th>
-                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">y</th>
-                            <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center" />
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {input.bolts.map((row, i) => (
-                            <tr
-                              key={row.id}
-                              onMouseEnter={() => setHover(i + 1)}
-                              onMouseLeave={() => setHover(null)}
-                              className={hover === i + 1 ? "bg-violet-50" : ""}
-                            >
-                              <td className="px-1 py-1.5 font-mono text-slate-500">
-                                {i + 1}
-                              </td>
-                              <td className="px-1 py-1.5">
-                                <SelectInput
-                                  aria-label={`Bolt ${i + 1} size`}
-                                  value={row.sizeId}
-                                  options={sizeOptions}
-                                  onChange={(value) => updateBolt(row.id, { sizeId: value })}
-                                  className="min-w-[7.5rem] font-sans text-xs"
-                                />
-                              </td>
-                              <td className="px-1 py-1.5">
-                                <UnitInput
-                                  label=""
-                                  quantity="length"
-                                  value={row.x}
-                                  onChange={(value) => updateBolt(row.id, { x: value })}
-                                  step={unitSystem === "imperial" ? 0.1 : 1}
-                                />
-                              </td>
-                              <td className="px-1 py-1.5">
-                                <UnitInput
-                                  label=""
-                                  quantity="length"
-                                  value={row.y}
-                                  onChange={(value) => updateBolt(row.id, { y: value })}
-                                  step={unitSystem === "imperial" ? 0.1 : 1}
-                                />
-                              </td>
-                              <td className="px-1 py-1.5 text-right">
-                                <button
-                                  type="button"
-                                  aria-label={`Delete bolt ${i + 1}`}
-                                  onClick={() => removeBolt(row.id)}
-                                  className="rounded px-2 py-1 text-red-600 hover:bg-red-50"
-                                >
-                                  <i className="fa-solid fa-xmark" aria-hidden="true" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  <div className="grid grid-cols-2 gap-3" >
+                    {PATTERN_CONFIGS.find((p) => p.value === currentInput.pattern.type)?.fields.map((field) => {
+                      const val = currentInput.pattern[field.key as keyof BoltPattern];
+
+                      return (
+                        <UnitInput
+                          key={field.key}
+                          label={field.label}
+                          quantity={field.quantity}
+                          value={(val as number) ?? 0}
+                          onChange={(v) => updatePattern(field.key as keyof BoltPattern, v ?? 0)}
+                          step={unitSystem === "imperial" ? field.step : field.stepSI}
+                        />
+                      );
+                    })}
+                  </div>
+                  {input.patternGroups.length > 0 ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50">
+                      <h3 className="text-xs font-semibold text-slate-700 p-2">Added patterns</h3>
+                      {input.patternGroups.map((group, index) => (
+                        <div
+                          key={group.id}
+                          className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-xs ${group.id === editingPatternId ? "bg-violet-50" : "bg-white"
+                            }`}
+                        >                            <span className="text-slate-700">
+                            Pattern {index + 1}: {PATTERN_CONFIGS.find((item) => item.value === group.pattern.type)?.label ?? group.pattern.type}
+                            <span className="ml-1 text-slate-400">(Bolts: {group.boltIds.join(",")})</span>
+                          </span>
+                          <div className="flex shrink-0 gap-2">
+                            {editingPatternId === group.id ? (
+                              <button type="button" onClick={() => setEditingPatternId(null)} className="shrink-0 font-semibold hover:text-sky-950">Done</button>
+                            ) : editingPatternId === null ? (
+                              <>
+                                <button type="button" onClick={() => editPattern(group)} className="font-semibold text-sky-700 hover:text-sky-900">Edit</button>
+                                <button type="button" onClick={() => removePattern(group)} className="font-semibold text-red-600 hover:text-red-800">Remove</button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  ) : null}
+                </div>
+              </Card>
+
+              {/* Individual bolt sizes and coordinates. */}
+              <Card title="Bolt List" icon="fa-solid fa-list-ol">
+                <div className="overflow-hidden rounded-lg">
+                  <div className="max-h-[390px] overflow-auto">
+                    <table className="data-table min-w-[360px] border-collapse text-left">
+                      <thead className="data-table-header">
+                        <tr>
+                          <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">#</th>
+                          <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">Size</th>
+                          <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">X</th>
+                          <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center">Y</th>
+                          <th className="sticky top-0 z-10 bg-slate-100 px-2 py-2 text-center" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {input.bolts.map((row, i) => (
+                          <tr
+                            key={row.id}
+                            onMouseEnter={() => setHover(i + 1)}
+                            onMouseLeave={() => setHover(null)}
+                            className={hover === i + 1 ? "bg-violet-50" : ""}
+                          >
+                            <td className="px-1 py-1.5 font-mono text-slate-500">
+                              {i + 1}
+                            </td>
+                            <td className="px-1 py-1.5">
+                              <SelectInput
+                                aria-label={`Bolt ${i + 1} size`}
+                                value={row.sizeId}
+                                options={sizeOptions}
+                                onChange={(value) => updateBolt(row.id, { sizeId: value })}
+                                className="min-w-[7.5rem] font-sans text-xs"
+                              />
+                            </td>
+                            <td className="px-1 py-1.5">
+                              <UnitInput
+                                label=""
+                                quantity="length"
+                                value={row.x}
+                                onChange={(value) => updateBolt(row.id, { x: value })}
+                                step={unitSystem === "imperial" ? 0.1 : 1}
+                              />
+                            </td>
+                            <td className="px-1 py-1.5">
+                              <UnitInput
+                                label=""
+                                quantity="length"
+                                value={row.y}
+                                onChange={(value) => updateBolt(row.id, { y: value })}
+                                step={unitSystem === "imperial" ? 0.1 : 1}
+                              />
+                            </td>
+                            <td className="px-1 py-1.5 text-right">
+                              <button
+                                type="button"
+                                aria-label={`Delete bolt ${i + 1}`}
+                                onClick={() => removeBolt(row.id)}
+                                className="rounded px-2 py-1 text-red-600 hover:bg-red-50"
+                              >
+                                <i className="fa-solid fa-xmark" aria-hidden="true" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </Card>
@@ -584,17 +603,6 @@ export function BoltGroupPage() {
   );
 }
 
-// Reusable small result tile.
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
-      <div className="font-sans text-[11px] text-slate-500">{label}</div>
-      <div className="mt-0.5 text-sm font-bold text-slate-800">{value}</div>
-      {sub ? <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div> : null}
-    </div>
-  );
-}
-
 // Summary properties for the calculated bolt group, matching the weld page's section summary structure.
 function BoltGroupSummary({
   result,
@@ -611,21 +619,21 @@ function BoltGroupSummary({
   return (
     <Card title="Pattern, Loads and Bolt Forces" icon="fa-solid fa-bullseye">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric
+        <MetricTile
           label="Pattern COG (area-weighted)"
           value={`${formatSignificantFigures(result.cogX, 4)}, ${formatSignificantFigures(result.cogY, 4)} ${lengthUnit}`}
         />
-        <Metric
+        <MetricTile
           label="Total force at COG"
           value={`${formatSignificantFigures(result.Fx / 1000, 4)}, ${formatSignificantFigures(result.Fy / 1000, 4)} ${forceUnit}`}
           sub="ΣFx, ΣFy"
         />
-        <Metric
+        <MetricTile
           label="Moment at COG"
           value={`${formatSignificantFigures(result.momentAtCog / momentScale, 4)} ${momentUnit}`}
           sub={result.momentAtCog > 0 ? "counter-clockwise" : result.momentAtCog < 0 ? "clockwise" : undefined}
         />
-        <Metric
+        <MetricTile
           label="Maximum bolt force"
           value={`${formatSignificantFigures(result.maxForce / 1000, 4)} ${forceUnit}`}
           sub={result.maxBolts.length > 0 ? `bolt ${result.maxBolts.join(", ")}` : "no load"}
@@ -660,7 +668,6 @@ function regeneratePatternGroup(
   }));
   const nextById = new Map(nextBolts.map((bolt) => [bolt.id, bolt]));
   const previousIds = new Set(group.boltIds);
-  const nextIds = new Set(nextBolts.map((bolt) => bolt.id));
   const bolts = input.bolts.flatMap((bolt) => {
     if (!previousIds.has(bolt.id)) return [bolt];
     const replacement = nextById.get(bolt.id);
@@ -677,7 +684,9 @@ function regeneratePatternGroup(
     pattern,
     bolts,
     patternGroups: input.patternGroups.map((item) =>
-      item.id === patternId ? { ...item, pattern, boltIds: nextBolts.map((bolt) => bolt.id) } : item,
+      item.id === patternId
+        ? { ...item, pattern, boltIds: nextBolts.map((bolt) => bolt.id) }
+        : item,
     ),
   };
 }
@@ -730,8 +739,8 @@ function ResultsTable({ result, system }: { result: NonNullable<ReturnType<typeo
   return (
     <Card className="mt-6" title="Bolt Force Breakdown" icon="fa-solid fa-list-check">
       <div className="overflow-x-auto">
-        <table className="w-full overflow-hidden rounded-xl border border-slate-100 text-left text-xs font-mono">
-          <thead className="border-b border-slate-200 bg-slate-100 text-[10px] tracking-wider text-slate-600">
+        <table className="data-table rounded-xl border-slate-100 text-left font-mono">
+          <thead className="data-table-header border-b border-slate-200">
             <tr>
               <th rowSpan={2} className="border-r border-slate-200 px-3 py-2.5 text-center">Bolt</th>
               <th rowSpan={2} className="border-r border-slate-200 px-3 py-2.5 text-center">Size</th>

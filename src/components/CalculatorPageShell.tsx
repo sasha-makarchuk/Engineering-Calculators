@@ -8,6 +8,7 @@ interface CalculatorPageShellProps {
     subtitle: string;
     pageTab: PageTab;
     setPageTab: (tab: PageTab) => void;
+    tabActions?: ReactNode;
     children: ReactNode;
 }
 
@@ -18,6 +19,7 @@ export function CalculatorPageShell({
     subtitle,
     pageTab,
     setPageTab,
+    tabActions,
     children,
 }: CalculatorPageShellProps) {
     return (
@@ -29,6 +31,7 @@ export function CalculatorPageShell({
                 right={<UnitToggle />}
                 pageTab={pageTab}
                 setPageTab={setPageTab}
+                tabActions={tabActions}
             />
             <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-6 sm:px-6 lg:px-8">
                 {children}

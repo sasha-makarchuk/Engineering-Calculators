@@ -2,6 +2,7 @@
 // a dynamic joint diagram, and a detailed calculation section. The math lives in engineering/boltedJoint.ts.
 import { useMemo, useState } from "react";
 import { Card } from "../components/Card";
+import { MetricTile } from "../components/MetricTile";
 import { CalculatorPageShell } from "../components/CalculatorPageShell";
 import { DiagramPanel } from "../components/DiagramPanel";
 import { SelectInput } from "../components/Dropdown";
@@ -9,6 +10,7 @@ import { Equation } from "../components/Equation";
 import { FastenerSelection } from "../components/FastenerSelection";
 import { JointDiagram } from "../components/JointDiagram";
 import { StatusBanner } from "../components/StatusBanner";
+import { ReportExportActions } from "../components/ReportExportActions";
 import { type PageTab } from "../components/SiteHeader";
 import { UnitInput } from "../components/UnitInput";
 import { useUnitSystem } from "../components/units/UnitContext";
@@ -54,6 +56,7 @@ import {
   type UnitQuantity,
   type UnitSystem,
 } from "../engineering/units";
+import { createBoltedJointReportData, downloadWorkbook, getReportDiagramDataUrl, openPdfReport } from "../engineering/engineeringReport";
 
 // ---------------------------------------------------------------------------------------------
 // Form state. Everything is stored in SI base units (mm, N, MPa, N-mm); inputs convert for display.
@@ -345,16 +348,6 @@ function StatusPill({ status }: { status: FosStatus | "info" }) {
   );
 }
 
-// Reusable metric tile for calculated geometry and preload values.
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className="mt-0.5 font-mono text-sm font-bold text-slate-800">{value}</div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------------------------
@@ -416,6 +409,11 @@ export function BoltedJointPage() {
     `${formatSignificantFigures(fromBase(value, quantity, unitSystem), digits)} ${getUnitLabel(quantity, unitSystem)}`;
 
   const target = form.targetFos ?? 1.5;
+  const reportData = result && model.input ? createBoltedJointReportData(model.input, result, unitSystem, {
+    fastenerLabel: size.label,
+    gradeLabel: model.gradeLabel,
+    targetFos: target,
+  }) : null;
 
   // Render one plate's material and thickness fields, including custom strength inputs when needed.
   const plateFields = (which: "plate1" | "plate2", title: string) => {
@@ -490,6 +488,7 @@ export function BoltedJointPage() {
       subtitle="Preloaded joint strength, separation, thread stripping and bearing"
       pageTab={pageTab}
       setPageTab={setPageTab}
+      tabActions={pageTab === "calc" && reportData ? <ReportExportActions onPdfExport={() => openPdfReport(reportData, getReportDiagramDataUrl("bolted-joint"))} onExcelExport={async () => downloadWorkbook(reportData, await getReportDiagramDataUrl("bolted-joint"))} /> : null}
     >
       {pageTab === "calc" ? (
         <>
@@ -1233,8 +1232,8 @@ function ResultsPanel({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[360px] overflow-hidden rounded-lg border border-slate-200 text-left text-xs">
-          <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
+        <table className="data-table min-w-[360px] text-left">
+          <thead className="data-table-header">
             <tr>
               <th className="px-3 py-2">Check</th>
               <th className="px-3 py-2 text-right">Result</th>
@@ -1318,8 +1317,8 @@ function PropertiesTab({
           </span>
         </h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Tile label="Major diameter (d)" value={flen(g.major)} />
-          <Tile
+          <MetricTile label="Major diameter (d)" value={flen(g.major)} />
+          <MetricTile
             label={fastenerSystem === "metric" ? "Pitch (p)" : "Threads per inch (n)"}
             value={
               fastenerSystem === "metric"
@@ -1327,26 +1326,26 @@ function PropertiesTab({
                 : `${formatSignificantFigures(25.4 / g.pitch, 4)} TPI`
             }
           />
-          <Tile label="Pitch diameter (d2)" value={flen(g.pitchDiameter)} />
-          <Tile label="Minor diameter, bolt (d3)" value={flen(g.minorExternal)} />
-          <Tile label="Minor diameter, nut / tapped hole (D1)" value={flen(g.minorInternal)} />
-          <Tile label="Tensile stress area (At)" value={q(result.at, "area")} />
-          <Tile label="Major-diameter area (Ad)" value={q(result.ad, "area")} />
-          <Tile label="Thread engagement (Le)" value={flen(result.engagement)} />
+          <MetricTile label="Pitch diameter (d2)" value={flen(g.pitchDiameter)} />
+          <MetricTile label="Minor diameter, bolt (d3)" value={flen(g.minorExternal)} />
+          <MetricTile label="Minor diameter, nut / tapped hole (D1)" value={flen(g.minorInternal)} />
+          <MetricTile label="Tensile stress area (At)" value={q(result.at, "area")} />
+          <MetricTile label="Major-diameter area (Ad)" value={q(result.ad, "area")} />
+          <MetricTile label="Thread engagement (Le)" value={flen(result.engagement)} />
         </div>
       </div>
       <div>
         <h3 className="mb-2 text-xs font-bold text-slate-600">Grip and stiffness</h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Tile label="Clamped grip length" value={len(result.grip)} />
-          <Tile label="Effective grip for stiffness" value={len(result.gripEffective)} />
-          <Tile label="Bolt length" value={flen(model.values.boltLength)} />
-          <Tile label="Thread length (LT)" value={flen(result.threadLength)} />
-          <Tile label="Unthreaded in grip (ld)" value={len(result.unthreadedInGrip)} />
-          <Tile label="Threaded in grip (lt)" value={len(result.threadedInGrip)} />
-          <Tile label="Bolt stiffness (kb)" value={q(result.kb, "stiffness")} />
-          <Tile label="Member stiffness (km)" value={q(result.km, "stiffness")} />
-          <Tile label="Joint constant (C)" value={formatSignificantFigures(result.c, 3)} />
+          <MetricTile label="Clamped grip length" value={len(result.grip)} />
+          <MetricTile label="Effective grip for stiffness" value={len(result.gripEffective)} />
+          <MetricTile label="Bolt length" value={flen(model.values.boltLength)} />
+          <MetricTile label="Thread length (LT)" value={flen(result.threadLength)} />
+          <MetricTile label="Unthreaded in grip (ld)" value={len(result.unthreadedInGrip)} />
+          <MetricTile label="Threaded in grip (lt)" value={len(result.threadedInGrip)} />
+          <MetricTile label="Bolt stiffness (kb)" value={q(result.kb, "stiffness")} />
+          <MetricTile label="Member stiffness (km)" value={q(result.km, "stiffness")} />
+          <MetricTile label="Joint constant (C)" value={formatSignificantFigures(result.c, 3)} />
         </div>
       </div>
     </div>
@@ -1361,19 +1360,19 @@ function PreloadTab({ result, unitSystem }: { result: BoltedJointResult; unitSys
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Tile label="Proof load (Fp = Sp·At)" value={f(result.proofLoad)} />
-        <Tile
+        <MetricTile label="Proof load (Fp = Sp·At)" value={f(result.proofLoad)} />
+        <MetricTile
           label="Nominal preload / proof load"
           value={`${formatSignificantFigures((result.nominalPreload / result.proofLoad) * 100, 3)} %`}
         />
-        <Tile
+        <MetricTile
           label="Torque for nominal preload (T = K·Fi·d)"
           value={`${formatSignificantFigures(fromBase(result.torque, "torque", unitSystem), 4)} ${getUnitLabel("torque", unitSystem)}`}
         />
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[420px] overflow-hidden rounded-lg border border-slate-200 text-xs">
-          <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
+        <table className="data-table min-w-[420px]">
+          <thead className="data-table-header">
             <tr>
               <th className="px-3 py-2 text-left">Quantity</th>
               <th className="px-3 py-2 text-right">Minimum</th>
@@ -1602,8 +1601,8 @@ function DetailsTab({
         References tab.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] overflow-hidden rounded-lg border border-slate-200 text-xs">
-          <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
+        <table className="data-table min-w-[560px]">
+          <thead className="data-table-header">
             <tr>
               <th className="w-28 px-3 py-2 text-left">Symbol</th>
               <th className="px-3 py-2 text-left">Quantity</th>

@@ -5,41 +5,41 @@ import { type UnitSchema } from "../engineering/units";
 
 // Reusable nullable public load input model
 export interface LoadInput {
-    Fx: number | null;
-    Fy: number | null;
-    Fz: number | null;
-    xL: number | null;
-    yL: number | null;
-    zL: number | null;
-    Mx: number | null;
-    My: number | null;
-    Mz: number | null;
+  Fx: number | null;
+  Fy: number | null;
+  Fz: number | null;
+  xL: number | null;
+  yL: number | null;
+  zL: number | null;
+  Mx: number | null;
+  My: number | null;
+  Mz: number | null;
 }
 
 // Reusable validated load model in canonical base units
 export interface BaseLoadInput {
-    Fx: number;
-    Fy: number;
-    Fz: number;
-    xL: number;
-    yL: number;
-    zL: number;
-    Mx: number;
-    My: number;
-    Mz: number;
+  Fx: number;
+  Fy: number;
+  Fz: number;
+  xL: number;
+  yL: number;
+  zL: number;
+  Mx: number;
+  My: number;
+  Mz: number;
 }
 
 // Reusable unit schema for load conversions
 export const loadUnitSchema: UnitSchema<LoadInput> = {
-    Fx: "kforce",
-    Fy: "kforce",
-    Fz: "kforce",
-    xL: "length",
-    yL: "length",
-    zL: "length",
-    Mx: "loadMoment",
-    My: "loadMoment",
-    Mz: "loadMoment",
+  Fx: "kforce",
+  Fy: "kforce",
+  Fz: "kforce",
+  xL: "length",
+  yL: "length",
+  zL: "length",
+  Mx: "loadMoment",
+  My: "loadMoment",
+  Mz: "loadMoment",
 };
 
 interface LoadInputCardProps {
@@ -82,8 +82,8 @@ export function LoadsInputCard({
     >
       {/* Forces and Coordinates Table */}
       <div className="mb-4 overflow-x-auto">
-        <table className="w-full min-w-[300px] overflow-hidden rounded-lg border border-slate-200 text-left text-xs font-mono">
-          <thead className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wider text-slate-600">
+        <table className="data-table min-w-[300px] text-left font-mono">
+          <thead className="data-table-header border-b border-slate-200">
             <tr>
               <th className="p-2">Force Magnitude</th>
               {enableCoordinates ? (
@@ -106,7 +106,7 @@ export function LoadsInputCard({
               {enableCoordinates ? (
                 <td className="p-2">
                   <UnitInput
-                    label="XL Location"
+                    label="X Location"
                     quantity="length"
                     value={values.xL ?? 0}
                     onChange={(val) => onChange("xL", val)}
@@ -130,7 +130,7 @@ export function LoadsInputCard({
               {enableCoordinates ? (
                 <td className="p-2">
                   <UnitInput
-                    label="YL Location"
+                    label="Y Location"
                     quantity="length"
                     value={values.yL ?? 0}
                     onChange={(val) => onChange("yL", val)}
@@ -155,7 +155,7 @@ export function LoadsInputCard({
                 {enableCoordinates ? (
                   <td className="p-2">
                     <UnitInput
-                      label="ZL Offset"
+                      label="Z Offset"
                       quantity="length"
                       value={values.zL ?? 0}
                       onChange={(val) => onChange("zL", val)}
@@ -180,9 +180,8 @@ export function LoadsInputCard({
             Applied Direct Moments
           </h2>
           <div
-            className={`grid grid-cols-1 gap-2 ${
-              enableZ ? "sm:grid-cols-3" : "sm:grid-cols-2"
-            }`}
+            className={`grid grid-cols-1 gap-2 ${enableZ ? "sm:grid-cols-3" : "sm:grid-cols-2"
+              }`}
           >
             {enableZ ? (
               <>

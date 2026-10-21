@@ -261,6 +261,7 @@ export function WeldDiagram({
     >
       <canvas
         ref={canvasRef}
+        data-export-diagram="weld"
         className="w-full h-full cursor-crosshair"
       />
     </div>

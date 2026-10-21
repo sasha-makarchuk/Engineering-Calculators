@@ -9,6 +9,7 @@ interface SiteHeaderProps {
   title: ReactNode;
   subtitle: string;
   right?: ReactNode;
+  tabActions?: ReactNode;
     children?: ReactNode;
     // Optional tab state allows existing header usages to keep working.
     pageTab?: PageTab;
@@ -16,7 +17,7 @@ interface SiteHeaderProps {
 }
 
 // Shared sticky site header used by the homepage and calculator screens.
-export function SiteHeader({ icon, title, subtitle, right, children, pageTab, setPageTab }: SiteHeaderProps) {
+export function SiteHeader({ icon, title, subtitle, right, tabActions, children, pageTab, setPageTab }: SiteHeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-slate-900 text-white shadow-lg">
       <div className="mx-auto max-w-7xl px-4 pt-3 sm:px-6 lg:px-8">
@@ -38,7 +39,8 @@ export function SiteHeader({ icon, title, subtitle, right, children, pageTab, se
           {/* Shared calculator and theory navigation. */ }
           {
           pageTab !== undefined && setPageTab !== undefined && (
-            <div className="flex space-x-1 border-t border-slate-800 pt-2" >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2" >
+              <div className="flex space-x-1">
                 {(
                     [
                         ["calc", "fa-solid fa-calculator", "Interactive Calculator"],
@@ -60,6 +62,8 @@ export function SiteHeader({ icon, title, subtitle, right, children, pageTab, se
                         { label }
                     </button>
                 ))}
+              </div>
+              {tabActions}
             </div>
         )}
 

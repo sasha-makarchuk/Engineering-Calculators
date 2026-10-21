@@ -79,6 +79,7 @@ export function BoltGroupDiagram(props: BoltGroupDiagramProps) {
   return (
     <svg
       viewBox={`0 0 ${VW} ${VH}`}
+      data-export-diagram="bolt-group"
       className="h-auto w-full"
       role="img"
       aria-label="Plan view of the bolt group with centroid, applied forces and bolt forces"
